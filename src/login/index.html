@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login — OpenCawl</title>
+  <meta name="description" content="Log in to your OpenCawl account with your phone number." />
+  <meta property="og:title" content="OpenCawl - Log in to your account" />
+  <meta property="og:image" content="https://images.opencawl.com/logo/opencawl-logo.png" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="theme-color" content="#0d0d0d" />
+  <link rel="icon" href="https://images.opencawl.com/logo/opencawl-logo.png" />
+  <style>
+    /* ── Reset & Base ─────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0d0d;
+      --bg-card: rgba(255,255,255,0.04);
+      --bg-card-hover: rgba(255,255,255,0.07);
+      --border: #1e1e2e;
+      --text: #F5F5F5;
+      --text-muted: #8A8A8A;
+      --accent: #E8655A;
+      --accent-hover: #d4574c;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --radius-pill: 999px;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    /* ── Login Container ──────────────────────────── */
+    .login-container {
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+    }
+
+    .login-logo {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 40px;
+      display: inline-block;
+    }
+
+    .login-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 40px 32px;
+    }
+
+    .login-title {
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .login-subtitle {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-bottom: 32px;
+    }
+
+    /* ── Form Elements ────────────────────────────── */
+    .form-group {
+      width: 100%;
+      margin-bottom: 16px;
+      text-align: left;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--text-muted);
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 14px 16px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .form-input::placeholder { color: var(--text-muted); }
+    .form-input:focus { border-color: var(--accent); }
+    .form-input.input-error { border-color: #ef4444; }
+
+    /* ── Phone Field ─────────────────────────────── */
+    .phone-field {
+      display: flex;
+      gap: 8px;
+    }
+
+    .phone-country-select {
+      flex-shrink: 0;
+      padding: 0 10px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 0.95rem;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.2s;
+      appearance: none;
+      -webkit-appearance: none;
+      min-width: 88px;
+    }
+
+    .phone-country-select:focus { border-color: var(--accent); }
+    .phone-country-select.input-error { border-color: #ef4444; }
+
+    .phone-number-input {
+      flex: 1;
+      width: auto;
+    }
+
+    /* ── OTP Input ────────────────────────────────── */
+    .otp-group {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 4px;
+    }
+
+    .otp-box {
+      width: 48px;
+      height: 56px;
+      text-align: center;
+      font-size: 1.4rem;
+      font-weight: 700;
+      padding: 0;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.2s;
+      caret-color: transparent;
+    }
+
+    .otp-box:focus { border-color: var(--accent); }
+    .otp-box.input-error { border-color: #ef4444; }
+
+    /* ── Buttons ──────────────────────────────────── */
+    .btn {
+      display: inline-block;
+      width: 100%;
+      padding: 14px 28px;
+      border-radius: var(--radius-sm);
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+
+    .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border-radius: var(--radius-pill);
+    }
+
+    /* ── Messages ─────────────────────────────────── */
+    .form-message {
+      font-size: 0.9rem;
+      min-height: 1.4em;
+      margin-top: 16px;
+    }
+
+    .form-message.error { color: #f87171; }
+    .form-message.success { color: #34d399; }
+
+    /* ── Step visibility ──────────────────────────── */
+    .step { display: none; }
+    .step.active { display: block; }
+
+    /* ── Back link ────────────────────────────────── */
+    .back-link {
+      display: inline-block;
+      margin-top: 16px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: color 0.2s;
+      background: none;
+      border: none;
+      font-family: inherit;
+    }
+
+    .back-link:hover { color: var(--text); }
+
+    /* ── Footer link ──────────────────────────────── */
+    .login-footer {
+      margin-top: 24px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .login-footer a {
+      color: var(--accent);
+      transition: color 0.2s;
+    }
+
+    .login-footer a:hover { color: var(--text); }
+
+    /* ── Spinner ──────────────────────────────────── */
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Responsive ───────────────────────────────── */
+    @media (max-width: 480px) {
+      .login-card { padding: 32px 20px; }
+      .otp-box { width: 40px; height: 48px; font-size: 1.2rem; }
+      .otp-group { gap: 6px; }
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <a href="/" class="login-logo" aria-label="OpenCawl home">OpenCawl</a>
+
+    <div class="login-card">
+      <!-- Step 1: Phone Number -->
+      <div id="step-phone" class="step active">
+        <h1 class="login-title">Welcome back</h1>
+        <p class="login-subtitle">Enter your phone number to sign in.</p>
+        <form id="phone-form" novalidate>
+          <div class="form-group">
+            <label class="form-label">Phone number</label>
+            <div class="phone-field">
+              <select id="country-select" class="phone-country-select" aria-label="Country code"></select>
+              <input
+                type="tel"
+                id="phone-number"
+                class="form-input phone-number-input"
+                placeholder="(555) 000-0000"
+                autocomplete="tel-national"
+                inputmode="tel"
+                required
+              />
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary" id="send-code-btn">Send Code</button>
+          <div class="form-message" id="phone-message" role="status" aria-live="polite"></div>
+        </form>
+      </div>
+
+      <!-- Step 2: OTP Verification -->
+      <div id="step-code" class="step">
+        <h1 class="login-title">Enter your code</h1>
+        <p class="login-subtitle">We sent a 6-digit code to <span id="display-phone"></span></p>
+        <form id="code-form" novalidate>
+          <div class="form-group">
+            <label class="form-label sr-only">Verification code</label>
+            <div class="otp-group" id="otp-container" role="group" aria-label="6-digit verification code">
+              <input class="otp-box" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" autocomplete="one-time-code" aria-label="Digit 1" />
+              <input class="otp-box" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" aria-label="Digit 2" />
+              <input class="otp-box" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" aria-label="Digit 3" />
+              <input class="otp-box" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" aria-label="Digit 4" />
+              <input class="otp-box" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" aria-label="Digit 5" />
+              <input class="otp-box" type="text" inputmode="numeric" maxlength="1" pattern="[0-9]" aria-label="Digit 6" />
+            </div>
+          </div>
+          <div class="form-message" id="code-message" role="status" aria-live="polite"></div>
+        </form>
+        <button type="button" class="back-link" id="back-btn" aria-label="Go back to phone number entry">&larr; Use a different number</button>
+      </div>
+    </div>
+
+    <p class="login-footer">
+      Don't have an account? <a href="/#waitlist">Join the waitlist</a>
+    </p>
+  </div>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenCawl - Give your Claw a phone number</title>
+  <meta name="description" content="OpenCawl connects your OpenClaw instance to the phone network. Call it with instructions. Tell it to make calls." />
+  <meta property="og:title" content="OpenCawl - Give your Claw a phone number" />
+  <meta property="og:image" content="https://images.opencawl.com/logo/opencawl-logo.png" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="theme-color" content="#0d0d0d" />
+  <link rel="icon" href="https://images.opencawl.com/logo/opencawl-logo.png" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="nav" role="navigation" aria-label="Main navigation">
+    <div class="nav-inner">
+      <a href="/" class="nav-logo" aria-label="OpenCawl home">OpenCawl</a>
+      <div class="nav-right">
+        <a href="#faq" class="nav-link">FAQ</a>
+        <a href="/src/login/" class="nav-link">Log In</a>
+        <a href="#waitlist" class="nav-btn">Get Started</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="hero" id="hero">
+    <div class="hero-inner">
+      <h1 class="hero-title">Give your Claw a phone number</h1>
+      <p class="hero-subtitle">
+        OpenCawl connects your OpenClaw instance to the phone network.
+        Call it with instructions. Tell it to make calls. Every task that
+        involves a phone call becomes something your Claw can just handle.
+      </p>
+      <a href="#waitlist" class="btn btn-primary hero-cta">Join the Waitlist</a>
+    </div>
+  </section>
+
+  <!-- Demo Section 1: You call your Claw -->
+  <section class="demo-section">
+    <div class="demo-inner">
+      <div class="demo-text">
+        <h2>You call your Claw</h2>
+        <p>
+          Call your OpenCawl number. Give a natural language instruction.
+          Hear confirmation. Hang up. Your OpenClaw executes in the background.
+          You get a text when it's done.
+        </p>
+        <p class="demo-aside">No app to open. No browser needed. Just call, speak, and let it work.</p>
+      </div>
+      <div class="demo-mockup">
+        <div class="phone-frame">
+          <div class="phone-header">
+            <span class="phone-icon" aria-hidden="true">📞</span>
+            <span>OpenCawl</span>
+            <span class="phone-status">Connected</span>
+          </div>
+          <div class="chat-bubble chat-outgoing">"Call my dentist and reschedule Thursday's appointment..."</div>
+          <div class="chat-bubble chat-incoming">"Got it. I'll call and reschedule. You'll get a text when it's done."</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Demo Section 2: Your Claw calls the world -->
+  <section class="demo-section demo-section-reversed">
+    <div class="demo-inner">
+      <div class="demo-text">
+        <h2>Your Claw calls the world</h2>
+        <p>
+          Tell OpenCawl to make a call. It provisions an AI agent with context
+          and goals, dials the number, completes the task, and reports back.
+        </p>
+        <p class="demo-aside">
+          Not a bot reading a script. An agent that navigates hold music,
+          responds to questions, and completes real tasks.
+        </p>
+      </div>
+      <div class="demo-mockup">
+        <div class="phone-frame">
+          <div class="phone-header">
+            <span class="phone-icon" aria-hidden="true">🤖</span>
+            <span>Outbound Call</span>
+            <span class="phone-status">Active</span>
+          </div>
+          <div class="chat-bubble chat-outgoing">"Hi, I'm calling to reschedule an appointment for Thursday."</div>
+          <div class="chat-bubble chat-incoming">"Sure, what day works better?"</div>
+          <div class="chat-bubble chat-outgoing">"Any afternoon next week would be perfect."</div>
+          <div class="chat-bubble chat-incoming">"I have Tuesday at 2pm available."</div>
+          <div class="chat-bubble chat-outgoing">"That works great, thank you!"</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="features" id="features">
+    <div class="section-inner">
+      <h2 class="section-title">Everything You Need</h2>
+      <p class="section-subtitle">Powerful tools to bring voice AI to your OpenClaw agents.</p>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">🎙️</div>
+          <h3 class="feature-title">Voice AI</h3>
+          <p class="feature-desc">Choose from 20 curated voices or clone your own. Natural, expressive conversations powered by ElevenLabs.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">💳</div>
+          <h3 class="feature-title">Credit System</h3>
+          <p class="feature-desc">Transparent, usage-based billing. Track every credit with an append-only ledger. No surprises.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">🔌</div>
+          <h3 class="feature-title">API Integration</h3>
+          <p class="feature-desc">Drop in the skill file, add your API key, and your OpenClaw instance can make calls in minutes.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">📊</div>
+          <h3 class="feature-title">Dashboard</h3>
+          <p class="feature-desc">Manage calls, voices, API keys, and billing from a single clean interface.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ Section -->
+  <section class="faq" id="faq">
+    <div class="section-inner">
+      <h2 class="section-title">Frequently Asked Questions</h2>
+      <div class="faq-list">
+        <details class="faq-item">
+          <summary class="faq-question">What is OpenCawl?</summary>
+          <div class="faq-answer">
+            <p>OpenCawl is a phone number for your OpenClaw instance. It handles inbound calls where you give voice instructions, and outbound calls where your Claw interacts with the world on your behalf. Powered by ElevenLabs Conversational AI.</p>
+          </div>
+        </details>
+        <details class="faq-item">
+          <summary class="faq-question">How does it work with OpenClaw?</summary>
+          <div class="faq-answer">
+            <p>OpenCawl connects to your OpenClaw Gateway. When you call with an instruction, it classifies your intent against your installed skills, confirms the action, and dispatches the task to OpenClaw. For outbound calls, it provisions an AI agent with the right context and goals.</p>
+          </div>
+        </details>
+        <details class="faq-item">
+          <summary class="faq-question">What can the outbound agent do?</summary>
+          <div class="faq-answer">
+            <p>The outbound agent can make real phone calls, navigate hold music, respond to questions, handle objections, and complete tasks like rescheduling appointments, following up with leads, or getting quotes from suppliers.</p>
+          </div>
+        </details>
+        <details class="faq-item">
+          <summary class="faq-question">Is it open source?</summary>
+          <div class="faq-answer">
+            <p>Yes. OpenCawl is fully open source. You can self-host with your own API keys (ElevenLabs, Twilio, OpenRouter). Every provider layer is swappable via config. The managed version at opencawl.com is for users who don't want to run their own infrastructure.</p>
+          </div>
+        </details>
+        <details class="faq-item">
+          <summary class="faq-question">What providers does it support?</summary>
+          <div class="faq-answer">
+            <p>Default: ElevenLabs for voice (STT/TTS/ConvAI), Twilio for phone infrastructure, Claude via OpenRouter for intent classification. All layers are interface-defined and swappable.</p>
+          </div>
+        </details>
+        <details class="faq-item">
+          <summary class="faq-question">When will it be available?</summary>
+          <div class="faq-answer">
+            <p>OpenCawl is currently in development. The MVP will launch with inbound voice instructions, outbound calling via ElevenLabs agents, and SMS notifications. Join the waitlist to get early access.</p>
+          </div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing Section -->
+  <section class="pricing" id="pricing">
+    <div class="section-inner">
+      <h2 class="section-title">Simple Pricing</h2>
+      <p class="section-subtitle">Start free. Scale when you're ready.</p>
+      <div class="pricing-grid">
+        <div class="pricing-card">
+          <h3 class="pricing-plan">Free</h3>
+          <div class="pricing-price">$0</div>
+          <div class="pricing-period">one-time</div>
+          <ul class="pricing-features" role="list">
+            <li>250 credits (one-time)</li>
+            <li>Shared phone number</li>
+            <li>20 curated voices</li>
+            <li>API access</li>
+          </ul>
+          <a href="#waitlist" class="btn btn-secondary">Get Started</a>
+        </div>
+        <div class="pricing-card pricing-card--featured">
+          <div class="pricing-badge">Popular</div>
+          <h3 class="pricing-plan">Starter</h3>
+          <div class="pricing-price">$20</div>
+          <div class="pricing-period">per month</div>
+          <ul class="pricing-features" role="list">
+            <li>1,200 credits / month</li>
+            <li>Dedicated phone number</li>
+            <li>20 curated voices</li>
+            <li>API access</li>
+          </ul>
+          <a href="#waitlist" class="btn btn-primary">Get Started</a>
+        </div>
+        <div class="pricing-card">
+          <h3 class="pricing-plan">Pro</h3>
+          <div class="pricing-price">$50</div>
+          <div class="pricing-period">per month</div>
+          <ul class="pricing-features" role="list">
+            <li>4,200 credits / month</li>
+            <li>Dedicated phone number</li>
+            <li>Voice cloning</li>
+            <li>Priority API access</li>
+          </ul>
+          <a href="#waitlist" class="btn btn-secondary">Get Started</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Waitlist Section -->
+  <section class="waitlist" id="waitlist">
+    <div class="section-inner">
+      <h2 class="section-title">Give your Claw a voice</h2>
+      <p class="section-subtitle">Join the waitlist to get early access.</p>
+      <form class="waitlist-form" id="waitlist-form" novalidate>
+        <div class="form-group">
+          <label for="phone" class="sr-only">Phone number</label>
+          <input
+            type="tel"
+            id="phone"
+            name="phone"
+            class="form-input"
+            placeholder="+1234567890"
+            autocomplete="tel"
+            required
+            aria-describedby="phone-hint"
+          />
+          <small id="phone-hint" class="form-hint">E.164 format: + followed by country code and number</small>
+        </div>
+        <button type="submit" class="btn btn-primary" id="waitlist-submit">Join Waitlist</button>
+        <div class="form-message" id="form-message" role="status" aria-live="polite"></div>
+      </form>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-links">
+        <a href="https://github.com/ammbo/opencawl" class="footer-link">GitHub</a>
+        <a href="https://openclaw.ai/" class="footer-link">OpenClaw</a>
+      </div>
+      <p class="footer-tagline">Open source voice interface for OpenClaw</p>
+      <p class="footer-copyright">&copy; 2026 OpenCawl.</p>
+    </div>
+  </footer>
+
+  <script type="module" src="./script.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+name = "opencawl-phone"
+compatibility_date = "2024-01-01"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "openclaw-phone-db"
+database_id = "d6435215-0ea5-413b-8706-52aef13b9b15"
+migrations_dir = "migrations"

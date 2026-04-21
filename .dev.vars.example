@@ -1,0 +1,26 @@
+# Twilio — SMS OTP and Programmable Voice
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=your_twilio_auth_token
+TWILIO_VERIFY_SERVICE_SID=VAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_DEFAULT_NUMBER=+15551234567
+
+# ElevenLabs — Conversational AI
+ELEVENLABS_API_KEY=xi-your_elevenlabs_api_key
+ELEVENLABS_AGENT_ID=your_elevenlabs_agent_id
+ELEVENLABS_WEBHOOK_SECRET_POST_CALL=your_post_call_webhook_secret
+
+# Tools webhook secret — not needed until tools are registered in ElevenLabs
+# ELEVENLABS_WEBHOOK_SECRET_TOOLS=your_tools_webhook_secret
+
+# Stripe — Subscription billing
+STRIPE_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_PRICE_STARTER=price_xxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_PRICE_PRO=price_xxxxxxxxxxxxxxxxxxxxxxxx
+STRIPE_PRICE_OVERAGE=price_xxxxxxxxxxxxxxxxxxxxxxxx
+
+# JWT signing secret (random 256-bit hex string)
+JWT_SECRET=your_jwt_secret_hex_string
+
+# Comma-separated E.164 phone numbers for admin access
+ADMIN_PHONE_NUMBERS=+15551234567,+15559876543
