@@ -8,6 +8,7 @@ TWILIO_DEFAULT_NUMBER=+15551234567
 ELEVENLABS_API_KEY=xi-your_elevenlabs_api_key
 ELEVENLABS_AGENT_ID=your_elevenlabs_agent_id
 ELEVENLABS_WEBHOOK_SECRET_POST_CALL=your_post_call_webhook_secret
+ELEVENLABS_WEBHOOK_SECRET_CONVERSATION_INIT=your_conversation_init_webhook_secret
 
 # Tools webhook secret — not needed until tools are registered in ElevenLabs
 # ELEVENLABS_WEBHOOK_SECRET_TOOLS=your_tools_webhook_secret

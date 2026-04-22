@@ -42,6 +42,43 @@ export function calculateCreditCost(operationType, quantity) {
   return rate * quantity;
 }
 
+const MINIMUM_CALL_CREDITS = CREDIT_RATES.call; // 12
+
+/**
+ * Plan-aware call entitlement check.
+ * - Free users: checks credits_balance >= MINIMUM_CALL_CREDITS (12)
+ * - Paid users: always allowed (overage billed via Stripe metered billing)
+ * @param {D1Database} db
+ * @param {object} user - full user row (must include plan and credits_balance)
+ * @returns {Promise<{ allowed: boolean, reason?: string }>}
+ */
+export async function checkEntitlement(db, user) {
+  const plan = user?.plan || 'free';
+
+  if (plan === 'starter' || plan === 'pro') {
+    return { allowed: true };
+  }
+
+  // Free-tier: check credit balance
+  const row = await db
+    .prepare('SELECT credits_balance FROM users WHERE id = ?')
+    .bind(user.id)
+    .first();
+
+  if (!row) {
+    return { allowed: false, reason: 'User not found' };
+  }
+
+  if (row.credits_balance < MINIMUM_CALL_CREDITS) {
+    return {
+      allowed: false,
+      reason: `Insufficient credits: ${row.credits_balance} available, ${MINIMUM_CALL_CREDITS} required`,
+    };
+  }
+
+  return { allowed: true };
+}
+
 /**
  * Checks whether a user has sufficient credits for an operation.
  */

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   calculateCreditCost,
   check,
+  checkEntitlement,
   deduct,
   add,
   getTransactions,
@@ -52,6 +53,39 @@ describe('checkLowBalance', () => {
   it('returns both true when balance < 20', () => {
     expect(checkLowBalance(19)).toEqual({ lowBalance: true, criticalBalance: true });
     expect(checkLowBalance(0)).toEqual({ lowBalance: true, criticalBalance: true });
+  });
+});
+
+// --- checkEntitlement ---
+
+describe('checkEntitlement', () => {
+  it('allows free user with sufficient credits', async () => {
+    const { db } = createMockDb({ credits_balance: 100 });
+    const user = { id: 'user-1', plan: 'free', credits_balance: 100 };
+    const result = await checkEntitlement(db, user);
+    expect(result).toEqual({ allowed: true });
+  });
+
+  it('denies free user with insufficient credits', async () => {
+    const { db } = createMockDb({ credits_balance: 5 });
+    const user = { id: 'user-1', plan: 'free', credits_balance: 5 };
+    const result = await checkEntitlement(db, user);
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain('Insufficient credits');
+  });
+
+  it('allows starter user regardless of credits', async () => {
+    const { db } = createMockDb({ credits_balance: 0 });
+    const user = { id: 'user-2', plan: 'starter', credits_balance: 0 };
+    const result = await checkEntitlement(db, user);
+    expect(result).toEqual({ allowed: true });
+  });
+
+  it('allows pro user regardless of credits', async () => {
+    const { db } = createMockDb({ credits_balance: 0 });
+    const user = { id: 'user-3', plan: 'pro', credits_balance: 0 };
+    const result = await checkEntitlement(db, user);
+    expect(result).toEqual({ allowed: true });
   });
 });
 

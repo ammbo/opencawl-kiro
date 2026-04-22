@@ -13,10 +13,10 @@ export async function onRequestPost(context) {
       headers: { 'Content-Type': 'application/json' },
     });
 
-  // Pro plan gate
-  if (user.plan !== 'pro') {
+  // Paid plan gate — both starter and pro can clone
+  if (user.plan === 'free') {
     return json(
-      { error: { code: 'FORBIDDEN', message: 'Voice cloning requires the Pro plan' } },
+      { error: { code: 'FORBIDDEN', message: 'Voice cloning requires a paid plan' } },
       403,
     );
   }

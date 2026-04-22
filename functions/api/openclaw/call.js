@@ -14,10 +14,8 @@
  */
 
 import { isValidE164, parseBody } from '../../lib/validation.js';
-import { check } from '../../lib/credits.js';
+import { checkEntitlement } from '../../lib/credits.js';
 import { buildElevenLabsPayload, validateOverrideFields } from '../../lib/agent-overrides.js';
-
-const MINIMUM_CALL_CREDITS = 12; // 1 minute at 12 credits/min
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -65,14 +63,14 @@ export async function onRequestPost(context) {
       );
     }
 
-    // 2. Check credits
-    const creditCheck = await check(db, user.id, MINIMUM_CALL_CREDITS);
-    if (!creditCheck.sufficient) {
+    // 2. Check entitlement (plan-aware)
+    const entitlement = await checkEntitlement(db, user);
+    if (!entitlement.allowed) {
       return json(
         {
           error: {
             code: 'INSUFFICIENT_CREDITS',
-            message: `Your credit balance (${creditCheck.balance}) is insufficient for this operation (minimum: ${MINIMUM_CALL_CREDITS})`,
+            message: entitlement.reason || 'You do not have sufficient credits to make this call',
           },
         },
         402,
@@ -85,9 +83,9 @@ export async function onRequestPost(context) {
 
     await db
       .prepare(
-        'INSERT INTO calls (id, user_id, direction, destination_phone, status, override_system_prompt, override_voice_id, override_first_message, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO calls (id, user_id, direction, destination_phone, status, override_system_prompt, override_voice_id, override_first_message, goal, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
-      .bind(callId, user.id, 'outbound', destination_phone, 'pending', system_prompt || null, voice_id || null, first_message || null, now, now)
+      .bind(callId, user.id, 'outbound', destination_phone, 'pending', system_prompt || null, voice_id || null, first_message || null, message || null, 'api', now, now)
       .run();
 
     // 4. Invoke ElevenLabs outbound call

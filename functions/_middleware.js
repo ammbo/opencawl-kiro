@@ -7,7 +7,6 @@ import { hashApiKey } from './lib/api-keys.js';
 const PUBLIC_PATHS = [
   '/api/auth/send-code',
   '/api/auth/verify-code',
-  '/api/waitlist/join',
 ];
 
 /**
@@ -48,38 +47,63 @@ export const onRequest = [
       return context.next();
     }
 
-    // OpenClaw API routes — Bearer token auth
+    // OpenClaw API routes — dual auth: Bearer token first, then session cookie fallback
     if (path.startsWith('/api/openclaw/')) {
+      // Try Bearer token auth first
       const authHeader = context.request.headers.get('Authorization') || '';
-      const match = authHeader.match(/^Bearer\s+(.+)$/i);
-      if (!match) {
-        return errorResponse(401, 'UNAUTHORIZED', 'Missing or invalid Bearer token');
-      }
+      const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);
 
-      const token = match[1];
-      const keyHash = await hashApiKey(token);
+      if (bearerMatch) {
+        const token = bearerMatch[1];
+        const keyHash = await hashApiKey(token);
 
-      const row = await context.env.DB.prepare(
-        'SELECT api_keys.*, users.* FROM api_keys JOIN users ON api_keys.user_id = users.id WHERE api_keys.key_hash = ? AND api_keys.is_active = 1',
-      )
-        .bind(keyHash)
-        .first();
+        const row = await context.env.DB.prepare(
+          'SELECT api_keys.*, users.* FROM api_keys JOIN users ON api_keys.user_id = users.id WHERE api_keys.key_hash = ? AND api_keys.is_active = 1',
+        )
+          .bind(keyHash)
+          .first();
 
-      if (!row) {
+        if (row) {
+          context.data.user = {
+            id: row.user_id,
+            phone: row.phone,
+            plan: row.plan,
+            credits_balance: row.credits_balance,
+            voice_id: row.voice_id,
+            twilio_phone_number: row.twilio_phone_number,
+            is_admin: row.is_admin,
+            stripe_customer_id: row.stripe_customer_id,
+          };
+          return context.next();
+        }
+
+        // Invalid Bearer token — don't fall back, return 401
         return errorResponse(401, 'UNAUTHORIZED', 'Invalid or revoked API key');
       }
 
-      context.data.user = {
-        id: row.user_id,
-        phone: row.phone,
-        plan: row.plan,
-        credits_balance: row.credits_balance,
-        voice_id: row.voice_id,
-        twilio_phone_number: row.twilio_phone_number,
-        is_admin: row.is_admin,
-        stripe_customer_id: row.stripe_customer_id,
-      };
+      // Fall back to session cookie auth
+      const cookieHeader = context.request.headers.get('Cookie');
+      const cookies = parseCookies(cookieHeader);
+      const sessionToken = cookies.session;
 
+      if (!sessionToken) {
+        return errorResponse(401, 'UNAUTHORIZED', 'Missing authentication');
+      }
+
+      const payload = await verifyJWT(sessionToken, context.env.JWT_SECRET);
+      if (!payload) {
+        return errorResponse(401, 'UNAUTHORIZED', 'Invalid or expired session');
+      }
+
+      const user = await context.env.DB.prepare('SELECT * FROM users WHERE id = ?')
+        .bind(payload.sub)
+        .first();
+
+      if (!user) {
+        return errorResponse(401, 'UNAUTHORIZED', 'User not found');
+      }
+
+      context.data.user = user;
       return context.next();
     }
 

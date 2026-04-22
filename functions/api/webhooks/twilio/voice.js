@@ -1,19 +1,18 @@
 /**
  * POST /api/webhooks/twilio/voice
+ *
  * Handles inbound Twilio voice webhooks.
- * Validates signature, classifies caller (owner / unknown-shared / unknown-dedicated),
- * and returns the appropriate TwiML to route the call.
+ * Validates the Twilio signature and returns TwiML that connects the call
+ * to the ElevenLabs agent via WebSocket stream.
+ *
+ * All caller identification, routing, and agent config overrides are now
+ * handled by the ElevenLabs Conversation Initiation Client Data webhook
+ * at /api/webhooks/elevenlabs/conversation-init. This endpoint only needs
+ * to bridge Twilio → ElevenLabs.
  */
 
 import { verifyTwilioSignature } from '../../../lib/webhooks.js';
-import { classifyCaller, buildInboundTwiml } from '../../../lib/inbound-routing.js';
 
-/**
- * Returns a TwiML XML response.
- * @param {string} twiml - The TwiML XML body
- * @param {number} status - HTTP status code
- * @returns {Response}
- */
 function twimlResponse(twiml, status = 200) {
   return new Response(twiml, {
     status,
@@ -22,30 +21,7 @@ function twimlResponse(twiml, status = 200) {
 }
 
 /**
- * Generates a simple UUID v4 using crypto.getRandomValues.
- * @returns {string}
- */
-function generateId() {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    hex.slice(12, 16),
-    hex.slice(16, 20),
-    hex.slice(20),
-  ].join('-');
-}
-
-/**
  * Parses a URL-encoded form body into a key-value object.
- * @param {string} body - The raw URL-encoded body string
- * @returns {Record<string, string>}
  */
 function parseFormBody(body) {
   const params = {};
@@ -62,19 +38,13 @@ function parseFormBody(body) {
 
 export async function onRequestPost(context) {
   const { env } = context;
-  const db = env.DB;
 
   try {
     // 1. Parse form-encoded body
     const rawBody = await context.request.text();
     const params = parseFormBody(rawBody);
 
-    // 2. Extract key params
-    const calledNumber = params.Called || '';
-    const callerNumber = params.From || '';
-    const callSid = params.CallSid || '';
-
-    // 3. Validate Twilio signature
+    // 2. Validate Twilio signature
     const signature = context.request.headers.get('X-Twilio-Signature') || '';
     const url = context.request.url;
 
@@ -86,108 +56,20 @@ export async function onRequestPost(context) {
       );
     }
 
-    // 4. Determine if the called number is a shared number
-    const sharedRow = await db
-      .prepare('SELECT phone_number FROM shared_phone_numbers WHERE phone_number = ?')
-      .bind(calledNumber)
-      .first();
-    const isSharedNumber = !!sharedRow;
-
-    // 5. Look up owner by Twilio phone number (the number that was called)
-    const owner = await db
-      .prepare('SELECT * FROM users WHERE twilio_phone_number = ?')
-      .bind(calledNumber)
-      .first();
-
-    if (!owner) {
-      return twimlResponse(
-        '<?xml version="1.0" encoding="UTF-8"?><Response><Say>Sorry, this number is not configured. Please try again later.</Say></Response>',
-      );
-    }
-
-    // 6. Classify the caller
-    const classification = classifyCaller(callerNumber, owner, isSharedNumber);
+    // 3. Return TwiML that connects to ElevenLabs agent.
+    //    ElevenLabs will call our conversation-init webhook to get
+    //    dynamic variables and config overrides for this specific caller.
     const agentId = env.ELEVENLABS_AGENT_ID;
 
-    // 7. Route based on classification
-    if (classification === 'owner') {
-      // Owner Call: create call record, connect with owner's stored agent config
-      const callId = generateId();
-      const now = new Date().toISOString();
-
-      await db
-        .prepare(
-          'INSERT INTO calls (id, user_id, direction, destination_phone, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        )
-        .bind(callId, owner.id, 'inbound', callerNumber, 'in_progress', now, now)
-        .run();
-
-      const twiml = buildInboundTwiml('owner', {
-        owner,
-        agentId,
-        callId,
-        callerNumber,
-      });
-
-      return twimlResponse(twiml);
-    }
-
-    if (classification === 'unknown_shared') {
-      // Unknown on Shared: promo TwiML + hangup, NO call record
-      const twiml = buildInboundTwiml('unknown_shared');
-      return twimlResponse(twiml);
-    }
-
-    // classification === 'unknown_dedicated'
-    // Query accepted_numbers for this user
-    const acceptedRows = await db
-      .prepare('SELECT phone_number FROM accepted_numbers WHERE user_id = ?')
-      .bind(owner.id)
-      .all();
-    const acceptedNumbers = (acceptedRows.results || []).map((r) => r.phone_number);
-
-    const isOpenAccess = acceptedNumbers.length === 0;
-    const isAccepted = acceptedNumbers.includes(callerNumber);
-
-    if (!isOpenAccess && !isAccepted) {
-      // Rejected: not in accepted list, list is non-empty
-      const twiml = buildInboundTwiml('unknown_dedicated', {
-        owner,
-        agentId,
-        callId: '',
-        callerNumber,
-        acceptedNumbers,
-        callHistory: [],
-      });
-      return twimlResponse(twiml);
-    }
-
-    // Accepted (open access or in list): create call record, query call history
-    const callId = generateId();
-    const now = new Date().toISOString();
-
-    await db
-      .prepare(
-        'INSERT INTO calls (id, user_id, direction, destination_phone, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      )
-      .bind(callId, owner.id, 'inbound', callerNumber, 'in_progress', now, now)
-      .run();
-
-    // Query call history: previous inbound calls from this caller to this user
-    const historyRows = await db
-      .prepare("SELECT id FROM calls WHERE user_id = ? AND destination_phone = ? AND direction = 'inbound'")
-      .bind(owner.id, callerNumber)
-      .all();
-    const callHistory = historyRows.results || [];
-
-    const twiml = buildInboundTwiml('unknown_dedicated', {
-      owner,
-      agentId,
-      callId,
-      callerNumber,
-      acceptedNumbers,
-      callHistory,
-    });
+    const twiml = [
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<Response>',
+      '  <Connect>',
+      `    <Stream url="wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${escapeXml(agentId)}">`,
+      '    </Stream>',
+      '  </Connect>',
+      '</Response>',
+    ].join('\n');
 
     return twimlResponse(twiml);
   } catch (err) {
@@ -197,4 +79,17 @@ export async function onRequestPost(context) {
       500,
     );
   }
+}
+
+/**
+ * Escapes a string for safe inclusion in XML.
+ */
+function escapeXml(str) {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 }

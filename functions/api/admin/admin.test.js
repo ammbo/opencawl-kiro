@@ -1,9 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { onRequestGet as getStats } from './stats.js';
 import { onRequestGet as getUsers } from './users.js';
-import { onRequestGet as getWaitlist } from './waitlist.js';
-import { onRequestPost as approveWaitlist } from './waitlist/approve.js';
-import { onRequestPost as rejectWaitlist } from './waitlist/reject.js';
 
 /**
  * Helper to create a mock DB that routes queries by SQL pattern matching.
@@ -137,95 +134,4 @@ describe('GET /api/admin/users', () => {
   });
 });
 
-// --- GET /api/admin/waitlist ---
-describe('GET /api/admin/waitlist', () => {
-  it('returns all waitlist entries', async () => {
-    const entries = [
-      { id: 'w1', phone: '+15551111111', status: 'pending', created_at: '2024-01-01T00:00:00Z' },
-      { id: 'w2', phone: '+15552222222', status: 'approved', created_at: '2024-01-02T00:00:00Z' },
-    ];
-    const db = createMockDb({ 'SELECT * FROM waitlist': entries });
-    const ctx = createGetContext('/api/admin/waitlist', db);
-    const res = await getWaitlist(ctx);
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.entries).toEqual(entries);
-  });
 
-  it('returns empty array when no entries', async () => {
-    const db = createMockDb({ 'SELECT * FROM waitlist': [] });
-    const ctx = createGetContext('/api/admin/waitlist', db);
-    const res = await getWaitlist(ctx);
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.entries).toEqual([]);
-  });
-});
-
-// --- POST /api/admin/waitlist/approve ---
-describe('POST /api/admin/waitlist/approve', () => {
-  it('returns 400 when waitlist_id is missing', async () => {
-    const db = createMockDb();
-    const ctx = createPostContext('/api/admin/waitlist/approve', {}, db);
-    const res = await approveWaitlist(ctx);
-    expect(res.status).toBe(400);
-    const data = await res.json();
-    expect(data.error.code).toBe('INVALID_INPUT');
-  });
-
-  it('returns 404 when waitlist entry not found', async () => {
-    const db = createMockDb();
-    const ctx = createPostContext('/api/admin/waitlist/approve', { waitlist_id: 'nonexistent' }, db);
-    const res = await approveWaitlist(ctx);
-    expect(res.status).toBe(404);
-    const data = await res.json();
-    expect(data.error.code).toBe('NOT_FOUND');
-  });
-
-  it('approves a valid waitlist entry', async () => {
-    const db = createMockDb({
-      'SELECT * FROM waitlist WHERE id': { id: 'w1', phone: '+15551111111', status: 'pending' },
-    });
-    const ctx = createPostContext('/api/admin/waitlist/approve', { waitlist_id: 'w1' }, db);
-    const res = await approveWaitlist(ctx);
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.success).toBe(true);
-    expect(db._mutations.length).toBe(1);
-    expect(db._mutations[0].sql).toContain('approved');
-  });
-});
-
-// --- POST /api/admin/waitlist/reject ---
-describe('POST /api/admin/waitlist/reject', () => {
-  it('returns 400 when waitlist_id is missing', async () => {
-    const db = createMockDb();
-    const ctx = createPostContext('/api/admin/waitlist/reject', {}, db);
-    const res = await rejectWaitlist(ctx);
-    expect(res.status).toBe(400);
-    const data = await res.json();
-    expect(data.error.code).toBe('INVALID_INPUT');
-  });
-
-  it('returns 404 when waitlist entry not found', async () => {
-    const db = createMockDb();
-    const ctx = createPostContext('/api/admin/waitlist/reject', { waitlist_id: 'nonexistent' }, db);
-    const res = await rejectWaitlist(ctx);
-    expect(res.status).toBe(404);
-    const data = await res.json();
-    expect(data.error.code).toBe('NOT_FOUND');
-  });
-
-  it('rejects a valid waitlist entry', async () => {
-    const db = createMockDb({
-      'SELECT * FROM waitlist WHERE id': { id: 'w1', phone: '+15551111111', status: 'pending' },
-    });
-    const ctx = createPostContext('/api/admin/waitlist/reject', { waitlist_id: 'w1' }, db);
-    const res = await rejectWaitlist(ctx);
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.success).toBe(true);
-    expect(db._mutations.length).toBe(1);
-    expect(db._mutations[0].sql).toContain('rejected');
-  });
-});

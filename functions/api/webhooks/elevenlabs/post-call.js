@@ -7,6 +7,44 @@
 
 import { verifyElevenLabsSignature } from '../../../lib/webhooks.js';
 import { calculateCreditCost, deduct, recordPaidUsage } from '../../../lib/credits.js';
+import { sendSms } from '../../../lib/sms.js';
+
+/**
+ * Generate a post-call SMS summary from the transcript.
+ * Format: "OpenCawl: Called {destination}. {outcome}" (≤160 chars)
+ * If no transcript, returns a fallback message.
+ */
+export function generateCallSummary(destination, transcript) {
+  const prefix = `OpenCawl: Called ${destination}.`;
+
+  if (!transcript || !Array.isArray(transcript) || transcript.length === 0) {
+    return `OpenCawl: Call to ${destination} completed. No transcript available.`;
+  }
+
+  // Find the last agent message as the outcome
+  let outcome = '';
+  for (let i = transcript.length - 1; i >= 0; i--) {
+    if (transcript[i].role === 'agent' && transcript[i].message) {
+      outcome = transcript[i].message;
+      break;
+    }
+  }
+
+  if (!outcome) {
+    return `OpenCawl: Call to ${destination} completed. No transcript available.`;
+  }
+
+  // "OpenCawl: Called {destination}. {outcome}" must be ≤160 chars
+  // prefix already includes the trailing period, add space before outcome
+  const full = `${prefix} ${outcome}`;
+  if (full.length <= 160) {
+    return full;
+  }
+
+  // Truncate outcome to fit: prefix + space + outcome + "…" ≤ 160
+  const maxOutcome = 160 - prefix.length - 1 - 1; // 1 for space, 1 for ellipsis
+  return `${prefix} ${outcome.slice(0, maxOutcome)}…`;
+}
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -81,6 +119,27 @@ export async function onRequestPost(context) {
           await deduct(db, resolvedUserId, cost, 'call', resolvedCallId);
         } else {
           await recordPaidUsage(db, user, durationMinutes, resolvedCallId, env);
+        }
+
+        // 5. Send post-call SMS notification (non-blocking)
+        if (user.phone && user.twilio_phone_number) {
+          try {
+            // Get destination_phone from the call record
+            const callRecord = await db
+              .prepare('SELECT destination_phone FROM calls WHERE id = ?')
+              .bind(resolvedCallId)
+              .first();
+
+            const destination = callRecord?.destination_phone || 'unknown';
+            const summary = generateCallSummary(destination, transcript);
+
+            const smsResult = await sendSms(env, user.twilio_phone_number, user.phone, summary);
+            if (!smsResult.success) {
+              console.error('[elevenlabs-post-call] SMS notification failed for call', resolvedCallId);
+            }
+          } catch (smsErr) {
+            console.error('[elevenlabs-post-call] SMS notification error:', smsErr.message || smsErr);
+          }
         }
       }
     }

@@ -67,10 +67,11 @@ describe('Middleware (_middleware.js)', () => {
       expect(ctx.next).toHaveBeenCalled();
     });
 
-    it('passes through /api/waitlist/join without auth', async () => {
+    it('does NOT pass through /api/waitlist/join (removed from public paths)', async () => {
       const ctx = createContext('https://example.com/api/waitlist/join');
-      await middleware(ctx);
-      expect(ctx.next).toHaveBeenCalled();
+      const res = await middleware(ctx);
+      expect(ctx.next).not.toHaveBeenCalled();
+      expect(res.status).toBe(401);
     });
 
     it('passes through /api/webhooks/* without auth', async () => {
@@ -101,7 +102,7 @@ describe('Middleware (_middleware.js)', () => {
   });
 
   describe('Bearer token auth (/api/openclaw/*)', () => {
-    it('returns 401 when no Authorization header', async () => {
+    it('returns 401 when no Authorization header and no session cookie', async () => {
       const ctx = createContext('https://example.com/api/openclaw/call');
       const res = await middleware(ctx);
       expect(res.status).toBe(401);
@@ -110,7 +111,7 @@ describe('Middleware (_middleware.js)', () => {
       expect(ctx.next).not.toHaveBeenCalled();
     });
 
-    it('returns 401 when Authorization header is not Bearer', async () => {
+    it('returns 401 when Authorization header is not Bearer and no session cookie', async () => {
       const ctx = createContext('https://example.com/api/openclaw/call', {
         headers: { Authorization: 'Basic abc123' },
       });
@@ -159,6 +160,155 @@ describe('Middleware (_middleware.js)', () => {
         is_admin: 0,
         stripe_customer_id: 'cus_123',
       });
+    });
+  });
+
+  describe('Session cookie fallback auth (/api/openclaw/*)', () => {
+    it('authenticates /api/openclaw/call with valid session cookie when no Bearer token', async () => {
+      const token = await signJWT(
+        { sub: 'user-session-1', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 },
+        JWT_SECRET,
+      );
+      const ctx = createContext('https://example.com/api/openclaw/call', {
+        headers: { Cookie: `session=${token}` },
+        dbResults: {
+          users: {
+            id: 'user-session-1',
+            phone: '+15551112222',
+            plan: 'free',
+            credits_balance: 100,
+            voice_id: null,
+            twilio_phone_number: null,
+            is_admin: 0,
+            stripe_customer_id: null,
+          },
+        },
+      });
+      await middleware(ctx);
+      expect(ctx.next).toHaveBeenCalled();
+      expect(ctx.data.user.id).toBe('user-session-1');
+      expect(ctx.data.user.plan).toBe('free');
+    });
+
+    it('authenticates /api/openclaw/status with valid session cookie', async () => {
+      const token = await signJWT(
+        { sub: 'user-session-2', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 },
+        JWT_SECRET,
+      );
+      const ctx = createContext('https://example.com/api/openclaw/status', {
+        headers: { Cookie: `session=${token}` },
+        dbResults: {
+          users: {
+            id: 'user-session-2',
+            phone: '+15553334444',
+            plan: 'starter',
+            credits_balance: 500,
+            voice_id: 'voice-2',
+            twilio_phone_number: '+15559998888',
+            is_admin: 0,
+            stripe_customer_id: 'cus_456',
+          },
+        },
+      });
+      await middleware(ctx);
+      expect(ctx.next).toHaveBeenCalled();
+      expect(ctx.data.user.id).toBe('user-session-2');
+      expect(ctx.data.user.plan).toBe('starter');
+    });
+
+    it('authenticates /api/openclaw/credits with valid session cookie', async () => {
+      const token = await signJWT(
+        { sub: 'user-session-3', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 },
+        JWT_SECRET,
+      );
+      const ctx = createContext('https://example.com/api/openclaw/credits', {
+        headers: { Cookie: `session=${token}` },
+        dbResults: {
+          users: {
+            id: 'user-session-3',
+            phone: '+15555556666',
+            plan: 'pro',
+            credits_balance: 9999,
+            voice_id: 'voice-3',
+            twilio_phone_number: '+15557778888',
+            is_admin: 0,
+            stripe_customer_id: 'cus_789',
+          },
+        },
+      });
+      await middleware(ctx);
+      expect(ctx.next).toHaveBeenCalled();
+      expect(ctx.data.user.id).toBe('user-session-3');
+      expect(ctx.data.user.plan).toBe('pro');
+    });
+
+    it('returns 401 on /api/openclaw/call with invalid session cookie and no Bearer', async () => {
+      const ctx = createContext('https://example.com/api/openclaw/call', {
+        headers: { Cookie: 'session=invalid.jwt.token' },
+      });
+      const res = await middleware(ctx);
+      expect(res.status).toBe(401);
+      expect(ctx.next).not.toHaveBeenCalled();
+      const body = await res.json();
+      expect(body.error.code).toBe('UNAUTHORIZED');
+      expect(body.error.message).toContain('Invalid or expired session');
+    });
+
+    it('returns 401 on /api/openclaw/call with expired session cookie and no Bearer', async () => {
+      const token = await signJWT(
+        { sub: 'user-expired', iat: Math.floor(Date.now() / 1000) - 7200, exp: Math.floor(Date.now() / 1000) - 3600 },
+        JWT_SECRET,
+      );
+      const ctx = createContext('https://example.com/api/openclaw/call', {
+        headers: { Cookie: `session=${token}` },
+      });
+      const res = await middleware(ctx);
+      expect(res.status).toBe(401);
+      expect(ctx.next).not.toHaveBeenCalled();
+    });
+
+    it('returns 401 on /api/openclaw/call when session user not found in DB', async () => {
+      const token = await signJWT(
+        { sub: 'nonexistent-user', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 },
+        JWT_SECRET,
+      );
+      const ctx = createContext('https://example.com/api/openclaw/call', {
+        headers: { Cookie: `session=${token}` },
+        dbResults: {},
+      });
+      const res = await middleware(ctx);
+      expect(res.status).toBe(401);
+      expect(ctx.next).not.toHaveBeenCalled();
+      const body = await res.json();
+      expect(body.error.message).toContain('User not found');
+    });
+
+    it('prefers Bearer token over session cookie when both are present', async () => {
+      const token = await signJWT(
+        { sub: 'user-session-ignored', iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 },
+        JWT_SECRET,
+      );
+      const ctx = createContext('https://example.com/api/openclaw/call', {
+        headers: {
+          Authorization: 'Bearer valid-api-key-token',
+          Cookie: `session=${token}`,
+        },
+        dbResults: {
+          api_keys: {
+            user_id: 'user-bearer',
+            phone: '+15551234567',
+            plan: 'starter',
+            credits_balance: 1000,
+            voice_id: 'voice-1',
+            twilio_phone_number: '+15559876543',
+            is_admin: 0,
+            stripe_customer_id: 'cus_123',
+          },
+        },
+      });
+      await middleware(ctx);
+      expect(ctx.next).toHaveBeenCalled();
+      expect(ctx.data.user.id).toBe('user-bearer');
     });
   });
 

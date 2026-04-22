@@ -5,9 +5,9 @@ import { useToast } from '../components/Toast.jsx';
 import { CheckIcon } from '../components/Icons.jsx';
 
 const PLANS = [
-  { name: 'free', label: 'Free', price: '$0', credits: '250 one-time', featured: false, features: ['Shared phone number', '5 curated ElevenLabs voices', 'Up to 5 outbound calls/day', '5-minute max call length'] },
-  { name: 'starter', label: 'Starter', price: '$20/mo', credits: '100 included min/mo', featured: true, features: ['100 call minutes included', 'Custom phone number', 'Full voice library + cloning', '$0.12/min overage billed by Stripe'] },
-  { name: 'pro', label: 'Pro', price: '$50/mo', credits: '350 included min/mo', featured: false, features: ['350 call minutes included', 'Custom phone number', 'Full voice library + cloning', '$0.12/min overage billed by Stripe'] },
+  { name: 'free', label: 'Free', price: '$0', credits: '250 one-time credits', featured: false, features: ['250 one-time credits', 'Shared phone number', '5 curated voices', 'API access'] },
+  { name: 'starter', label: 'Starter', price: '$20/mo', credits: '100 min/mo', featured: true, features: ['100 minutes per month', 'Dedicated phone number', 'Full voice library + cloning', '$0.12/min overage'] },
+  { name: 'pro', label: 'Pro', price: '$50/mo', credits: '350 min/mo', featured: false, features: ['350 minutes per month', 'Dedicated phone number', 'Full voice library + cloning', '$0.12/min overage'] },
 ];
 
 export default function Billing() {

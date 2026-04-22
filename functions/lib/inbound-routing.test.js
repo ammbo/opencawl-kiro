@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { classifyCaller, buildInboundTwiml } from './inbound-routing.js';
+import { classifyCaller, buildInboundTwiml, OWNER_DISPATCH_SYSTEM_PROMPT } from './inbound-routing.js';
 
 /** Generator for E.164-like phone numbers */
 const e164Phone = () =>
@@ -69,16 +69,16 @@ describe('Property 3: Inbound caller classification', () => {
 
 /**
  * Property 4: Owner call uses stored agent config
- * **Validates: Requirements 2.2**
+ * **Validates: Requirements 2.2, 3.1, 3.2**
  *
- * For owner calls with stored config, TwiML Stream includes those config values as Parameters.
+ * For owner calls, TwiML Stream always includes the dispatch system prompt and owner_mode,
+ * plus stored voice_id and first_message as Parameters when present.
  */
 describe('Property 4: Owner call uses stored agent config', () => {
-  it('includes stored system_prompt, voice_id, first_message in TwiML Stream Parameters', () => {
+  it('includes stored voice_id, first_message in TwiML Stream Parameters', () => {
     fc.assert(
       fc.property(
         fc.record({
-          system_prompt: fc.option(fc.string({ minLength: 1, maxLength: 200 }), { nil: undefined }),
           voice_id: fc.option(fc.string({ minLength: 1, maxLength: 50 }), { nil: undefined }),
           first_message: fc.option(fc.string({ minLength: 1, maxLength: 200 }), { nil: undefined }),
         }),
@@ -87,7 +87,6 @@ describe('Property 4: Owner call uses stored agent config', () => {
           const owner = {
             id: 'user-owner',
             phone: callerPhone,
-            system_prompt: config.system_prompt,
             voice_id: config.voice_id,
             first_message: config.first_message,
           };
@@ -103,14 +102,9 @@ describe('Property 4: Owner call uses stored agent config', () => {
           expect(twiml).toContain('<Connect>');
           expect(twiml).toContain('<Stream');
 
-          // Check each config field
-          if (config.system_prompt != null) {
-            expect(twiml).toContain('name="system_prompt"');
-            // The value is XML-escaped, so check the parameter exists
-            expect(twiml).toContain('<Parameter name="system_prompt"');
-          } else {
-            expect(twiml).not.toContain('name="system_prompt"');
-          }
+          // Owner calls always include dispatch system prompt and owner_mode
+          expect(twiml).toContain('<Parameter name="system_prompt"');
+          expect(twiml).toContain('<Parameter name="owner_mode" value="dispatch"');
 
           if (config.voice_id != null) {
             expect(twiml).toContain('name="voice_id"');
@@ -129,6 +123,35 @@ describe('Property 4: Owner call uses stored agent config', () => {
       ),
       { numRuns: 200 },
     );
+  });
+});
+
+/**
+ * Unit tests: Owner dispatch TwiML
+ * **Validates: Requirements 3.1, 3.2**
+ *
+ * Verifies that owner call TwiML includes owner_mode=dispatch and the
+ * OWNER_DISPATCH_SYSTEM_PROMPT content.
+ */
+describe('Owner dispatch TwiML', () => {
+  const owner = { id: 'user-1', phone: '+15551234567' };
+  const opts = { owner, agentId: 'agent-1', callId: 'call-1', callerNumber: '+15551234567' };
+
+  it('includes owner_mode parameter with value "dispatch"', () => {
+    const twiml = buildInboundTwiml('owner', opts);
+    expect(twiml).toContain('<Parameter name="owner_mode" value="dispatch" />');
+  });
+
+  it('includes the OWNER_DISPATCH_SYSTEM_PROMPT in the system_prompt parameter', () => {
+    const twiml = buildInboundTwiml('owner', opts);
+    // The prompt is XML-escaped in the TwiML output (e.g. ' → &apos;)
+    const escapedPrompt = OWNER_DISPATCH_SYSTEM_PROMPT
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+    expect(twiml).toContain(`<Parameter name="system_prompt" value="${escapedPrompt}" />`);
   });
 });
 

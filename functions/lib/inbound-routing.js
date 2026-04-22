@@ -37,8 +37,19 @@ function escapeXml(str) {
 }
 
 /**
+ * Dispatch-oriented system prompt for owner calls.
+ * Instructs the ElevenLabs agent to listen for task instructions and use the dispatch_call tool.
+ */
+export const OWNER_DISPATCH_SYSTEM_PROMPT = `You are the user's AI phone assistant. Listen to their instruction.
+If they want you to make a call on their behalf, use the dispatch_call tool
+with the destination phone number and the goal/task description.
+Confirm the dispatch to the user before hanging up.`;
+
+/**
  * Builds TwiML for an owner call, connecting to ElevenLabs with stored agent config.
  * Passes system_prompt, voice_id, first_message as Parameter elements in the Stream.
+ * Includes owner_mode: "dispatch" and the dispatch system prompt so the agent
+ * can handle task dispatch instructions from the owner.
  */
 function buildOwnerTwiml({ owner, agentId, callId, callerNumber }) {
   const lines = [
@@ -49,11 +60,10 @@ function buildOwnerTwiml({ owner, agentId, callId, callerNumber }) {
     `      <Parameter name="user_id" value="${escapeXml(owner.id)}" />`,
     `      <Parameter name="call_id" value="${escapeXml(callId)}" />`,
     `      <Parameter name="caller" value="${escapeXml(callerNumber)}" />`,
+    `      <Parameter name="owner_mode" value="dispatch" />`,
+    `      <Parameter name="system_prompt" value="${escapeXml(OWNER_DISPATCH_SYSTEM_PROMPT)}" />`,
   ];
 
-  if (owner.system_prompt != null) {
-    lines.push(`      <Parameter name="system_prompt" value="${escapeXml(owner.system_prompt)}" />`);
-  }
   if (owner.voice_id != null) {
     lines.push(`      <Parameter name="voice_id" value="${escapeXml(owner.voice_id)}" />`);
   }

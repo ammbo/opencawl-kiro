@@ -339,16 +339,32 @@ describe('POST /api/voice/clone', () => {
     expect(data.error.code).toBe('FORBIDDEN');
   });
 
-  it('returns 403 for starter-plan user', async () => {
+  it('allows starter-plan user to clone', async () => {
+    globalThis.fetch = vi.fn().mockImplementation((url) => {
+      if (url === 'https://example.com/audio.mp3') {
+        return Promise.resolve({
+          ok: true,
+          blob: () => Promise.resolve(new Blob(['audio-data'], { type: 'audio/mpeg' })),
+        });
+      }
+      if (url.includes('elevenlabs.io/v1/voices/add')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ voice_id: 'starter-cloned-voice-id' }),
+        });
+      }
+      return Promise.resolve({ ok: false });
+    });
+
     const ctx = createPostContext({
       user: STARTER_USER,
       body: { name: 'My Voice', audio_url: 'https://example.com/audio.mp3' },
     });
     const res = await clone(ctx);
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
 
     const data = await res.json();
-    expect(data.error.code).toBe('FORBIDDEN');
+    expect(data.voice_id).toBe('starter-cloned-voice-id');
   });
 
   it('clones voice for pro-plan user', async () => {

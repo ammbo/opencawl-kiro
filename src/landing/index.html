@@ -6,11 +6,11 @@
   <title>OpenCawl - Give your Claw a phone number</title>
   <meta name="description" content="OpenCawl connects your OpenClaw instance to the phone network. Call it with instructions. Tell it to make calls." />
   <meta property="og:title" content="OpenCawl - Give your Claw a phone number" />
-  <meta property="og:image" content="https://images.opencawl.com/logo/opencawl-logo.png" />
+  <meta property="og:image" content="https://images.opencawl.ai/logo/opencawl-logo.png" />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="theme-color" content="#0d0d0d" />
-  <link rel="icon" href="https://images.opencawl.com/logo/opencawl-logo.png" />
+  <link rel="icon" href="https://images.opencawl.ai/logo/opencawl-logo.png" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
@@ -21,7 +21,7 @@
       <div class="nav-right">
         <a href="#faq" class="nav-link">FAQ</a>
         <a href="/src/login/" class="nav-link">Log In</a>
-        <a href="#waitlist" class="nav-btn">Get Started</a>
+        <a href="/src/login/" class="nav-btn">Get Started</a>
       </div>
     </div>
   </nav>
@@ -32,10 +32,10 @@
       <h1 class="hero-title">Give your Claw a phone number</h1>
       <p class="hero-subtitle">
         OpenCawl connects your OpenClaw instance to the phone network.
-        Call it with instructions. Tell it to make calls. Every task that
-        involves a phone call becomes something your Claw can just handle.
+        Call or text your number with instructions to dispatch outbound AI calls.
+        Get SMS notifications when tasks are complete.
       </p>
-      <a href="#waitlist" class="btn btn-primary hero-cta">Join the Waitlist</a>
+      <a href="/src/login/" class="btn btn-primary hero-cta">Get Started</a>
     </div>
   </section>
 
@@ -105,7 +105,7 @@
         <div class="feature-card">
           <div class="feature-icon" aria-hidden="true">🎙️</div>
           <h3 class="feature-title">Voice AI</h3>
-          <p class="feature-desc">Choose from 20 curated voices or clone your own. Natural, expressive conversations powered by ElevenLabs.</p>
+          <p class="feature-desc">Choose from 5 curated voices on the free plan, or unlock the full library and clone your own on paid plans. Natural, expressive conversations powered by ElevenLabs.</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon" aria-hidden="true">💳</div>
@@ -152,7 +152,7 @@
         <details class="faq-item">
           <summary class="faq-question">Is it open source?</summary>
           <div class="faq-answer">
-            <p>Yes. OpenCawl is fully open source. You can self-host with your own API keys (ElevenLabs, Twilio, OpenRouter). Every provider layer is swappable via config. The managed version at opencawl.com is for users who don't want to run their own infrastructure.</p>
+            <p>Yes. OpenCawl is fully open source. You can self-host with your own API keys (ElevenLabs, Twilio, OpenRouter). Every provider layer is swappable via config. The managed version at opencawl.ai is for users who don't want to run their own infrastructure.</p>
           </div>
         </details>
         <details class="faq-item">
@@ -164,7 +164,7 @@
         <details class="faq-item">
           <summary class="faq-question">When will it be available?</summary>
           <div class="faq-answer">
-            <p>OpenCawl is currently in development. The MVP will launch with inbound voice instructions, outbound calling via ElevenLabs agents, and SMS notifications. Join the waitlist to get early access.</p>
+            <p>OpenCawl is live and available for sign-up. Create an account to get started.</p>
           </div>
         </details>
       </div>
@@ -182,12 +182,12 @@
           <div class="pricing-price">$0</div>
           <div class="pricing-period">one-time</div>
           <ul class="pricing-features" role="list">
-            <li>250 credits (one-time)</li>
+            <li>250 one-time credits</li>
             <li>Shared phone number</li>
-            <li>20 curated voices</li>
+            <li>5 curated voices</li>
             <li>API access</li>
           </ul>
-          <a href="#waitlist" class="btn btn-secondary">Get Started</a>
+          <a href="/src/login/" class="btn btn-secondary">Get Started</a>
         </div>
         <div class="pricing-card pricing-card--featured">
           <div class="pricing-badge">Popular</div>
@@ -195,52 +195,26 @@
           <div class="pricing-price">$20</div>
           <div class="pricing-period">per month</div>
           <ul class="pricing-features" role="list">
-            <li>1,200 credits / month</li>
+            <li>100 minutes per month</li>
             <li>Dedicated phone number</li>
-            <li>20 curated voices</li>
-            <li>API access</li>
+            <li>Full voice library + cloning</li>
+            <li>$0.12/min overage</li>
           </ul>
-          <a href="#waitlist" class="btn btn-primary">Get Started</a>
+          <a href="/src/login/" class="btn btn-primary">Get Started</a>
         </div>
         <div class="pricing-card">
           <h3 class="pricing-plan">Pro</h3>
           <div class="pricing-price">$50</div>
           <div class="pricing-period">per month</div>
           <ul class="pricing-features" role="list">
-            <li>4,200 credits / month</li>
+            <li>350 minutes per month</li>
             <li>Dedicated phone number</li>
-            <li>Voice cloning</li>
-            <li>Priority API access</li>
+            <li>Full voice library + cloning</li>
+            <li>$0.12/min overage</li>
           </ul>
-          <a href="#waitlist" class="btn btn-secondary">Get Started</a>
+          <a href="/src/login/" class="btn btn-secondary">Get Started</a>
         </div>
       </div>
-    </div>
-  </section>
-
-  <!-- Waitlist Section -->
-  <section class="waitlist" id="waitlist">
-    <div class="section-inner">
-      <h2 class="section-title">Give your Claw a voice</h2>
-      <p class="section-subtitle">Join the waitlist to get early access.</p>
-      <form class="waitlist-form" id="waitlist-form" novalidate>
-        <div class="form-group">
-          <label for="phone" class="sr-only">Phone number</label>
-          <input
-            type="tel"
-            id="phone"
-            name="phone"
-            class="form-input"
-            placeholder="+1234567890"
-            autocomplete="tel"
-            required
-            aria-describedby="phone-hint"
-          />
-          <small id="phone-hint" class="form-hint">E.164 format: + followed by country code and number</small>
-        </div>
-        <button type="submit" class="btn btn-primary" id="waitlist-submit">Join Waitlist</button>
-        <div class="form-message" id="form-message" role="status" aria-live="polite"></div>
-      </form>
     </div>
   </section>
 

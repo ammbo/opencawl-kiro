@@ -251,13 +251,13 @@ describe('POST /api/openclaw/call', () => {
   });
 
   it('returns 402 when credits are insufficient', async () => {
-    const lowCreditUser = { ...TEST_USER, credits_balance: 5 };
+    const lowCreditFreeUser = { ...TEST_USER, plan: 'free', credits_balance: 5 };
     const ctx = createContext({
       body: { destination_phone: '+14155551234', message: 'Hello' },
-      user: lowCreditUser,
+      user: lowCreditFreeUser,
     });
 
-    // Mock credit check returning low balance
+    // Mock credit check returning low balance for free user
     ctx.env.DB.prepare = function (sql) {
       if (sql.includes('SELECT credits_balance')) {
         return {
@@ -281,6 +281,79 @@ describe('POST /api/openclaw/call', () => {
 
     const data = await res.json();
     expect(data.error.code).toBe('INSUFFICIENT_CREDITS');
+  });
+
+  it('allows paid (starter) user to call regardless of credits_balance (Req 6.5)', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+
+    const starterUser = { ...TEST_USER, plan: 'starter', credits_balance: 0 };
+    const ctx = createContext({
+      body: { destination_phone: '+14155551234', message: 'Hello from paid user' },
+      user: starterUser,
+    });
+
+    const res = await callEndpoint(ctx);
+    expect(res.status).toBe(200);
+
+    const data = await res.json();
+    expect(data.call_id).toBeDefined();
+    expect(data.status).toBe('pending');
+
+    restoreFetch();
+  });
+
+  it('allows paid (pro) user to call regardless of credits_balance (Req 6.5)', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+
+    const proUser = { ...TEST_USER, plan: 'pro', credits_balance: 0 };
+    const ctx = createContext({
+      body: { destination_phone: '+14155551234', message: 'Hello from pro user' },
+      user: proUser,
+    });
+
+    const res = await callEndpoint(ctx);
+    expect(res.status).toBe(200);
+
+    const data = await res.json();
+    expect(data.call_id).toBeDefined();
+    expect(data.status).toBe('pending');
+
+    restoreFetch();
+  });
+
+  it('includes source: api in the call record INSERT (Req 2.6)', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+
+    const insertCalls = [];
+    const ctx = createContext({
+      body: { destination_phone: '+14155551234', message: 'Test source column' },
+    });
+
+    // Intercept DB prepare to capture INSERT bind args
+    ctx.env.DB.prepare = function (sql) {
+      return {
+        bind(...args) {
+          if (sql.includes('INSERT')) insertCalls.push({ sql, args });
+          return {
+            async run() { return { success: true, meta: { changes: 1 } }; },
+            async first() { return null; },
+          };
+        },
+      };
+    };
+
+    const res = await callEndpoint(ctx);
+    expect(res.status).toBe(200);
+
+    // Verify the INSERT was called and includes 'api' as source
+    expect(insertCalls.length).toBeGreaterThanOrEqual(1);
+    const callInsert = insertCalls.find(c => c.sql.includes('INSERT INTO calls'));
+    expect(callInsert).toBeDefined();
+    expect(callInsert.sql).toContain('source');
+    // source is the 10th bind parameter in the INSERT
+    expect(callInsert.args).toContain('api');
+
+    restoreFetch();
   });
 
   it('returns 400 for empty body', async () => {

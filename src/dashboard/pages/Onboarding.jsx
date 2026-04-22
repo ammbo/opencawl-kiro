@@ -8,6 +8,21 @@ import PhoneInput from '../components/PhoneInput.jsx';
 import { CopyIcon } from '../components/Icons.jsx';
 import { STEPS, getStorageKey, resolveInitialStep, nextStep } from './onboarding-utils.js';
 
+/**
+ * Helper: mark onboarding complete, refresh auth, then navigate to dashboard.
+ * Shared by StepCall's Finish/Skip and any future early-exit paths.
+ */
+async function finishOnboarding(refresh) {
+  await fetch('/api/auth/onboarding-complete', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  // Refresh the auth context so the redirect guard in app.jsx sees the updated flag
+  await refresh();
+  route('/dashboard/');
+}
+
 function ProgressBar({ currentStep }) {
   return (
     <div class="onboarding-progress">
@@ -71,24 +86,22 @@ function StepWelcome({ user, onNext }) {
 }
 
 /* ── Step 2: Get a Phone Number ───────────────── */
-function StepNumber({ onNext, request, toast }) {
+function StepNumber({ user, onNext, request, toast }) {
   const [provisioning, setProvisioning] = useState(false);
-  const [provisionedNumber, setProvisionedNumber] = useState(null);
-  const [failed, setFailed] = useState(false);
+  const [provisionedNumber, setProvisionedNumber] = useState(user.twilio_phone_number || null);
+
+  const isPaid = user.plan && user.plan !== 'free';
 
   const handleProvision = async () => {
     setProvisioning(true);
-    setFailed(false);
     try {
       const res = await request('/api/phone/provision', { method: 'POST' });
       if (res && res.phone_number) {
         setProvisionedNumber(res.phone_number);
       } else {
-        setFailed(true);
         toast('Failed to provision number', 'error');
       }
     } catch {
-      setFailed(true);
       toast('Failed to provision number', 'error');
     }
     setProvisioning(false);
@@ -96,13 +109,13 @@ function StepNumber({ onNext, request, toast }) {
 
   return (
     <div style={{ textAlign: 'center' }}>
-      <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: 8 }}>Get a Phone Number</h2>
-      <p style={{ color: 'var(--text-muted)', marginBottom: 24 }}>
-        Provision a phone number for your AI agent.
-      </p>
+      <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: 8 }}>Phone Number</h2>
 
       {provisionedNumber ? (
         <>
+          <p style={{ color: 'var(--text-muted)', marginBottom: 24 }}>
+            Your agent will call from this number.
+          </p>
           <div
             style={{
               background: 'var(--bg)',
@@ -124,8 +137,11 @@ function StepNumber({ onNext, request, toast }) {
             </button>
           </div>
         </>
-      ) : (
+      ) : isPaid ? (
         <>
+          <p style={{ color: 'var(--text-muted)', marginBottom: 24 }}>
+            Provision a dedicated phone number for your AI agent.
+          </p>
           <div style={{ marginBottom: 16 }}>
             <button
               class="btn btn-primary"
@@ -136,27 +152,39 @@ function StepNumber({ onNext, request, toast }) {
               {provisioning ? 'Provisioning…' : 'Provision Number'}
             </button>
           </div>
-          {failed && (
-            <div style={{ marginBottom: 16 }}>
-              <button class="btn btn-secondary" style={{ width: '100%', maxWidth: 280 }} onClick={onNext}>
-                Skip
-              </button>
-            </div>
-          )}
-          <div>
+          <button
+            type="button"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+              textDecoration: 'underline',
+            }}
+            onClick={onNext}
+          >
+            Skip for now
+          </button>
+        </>
+      ) : (
+        <>
+          <p style={{ color: 'var(--text-muted)', marginBottom: 16 }}>
+            Your agent can make outbound calls using a shared number.
+          </p>
+          <p style={{ color: 'var(--text-muted)', marginBottom: 24, fontSize: '0.85rem' }}>
+            Want a dedicated number so others can call your agent? Upgrade your plan in Billing.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            <button class="btn btn-primary" style={{ width: '100%', maxWidth: 280 }} onClick={onNext}>
+              Continue
+            </button>
             <button
-              type="button"
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--text-muted)',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-                textDecoration: 'underline',
-              }}
-              onClick={onNext}
+              class="btn btn-secondary"
+              style={{ width: '100%', maxWidth: 280, fontSize: '0.85rem' }}
+              onClick={() => { route('/dashboard/billing'); }}
             >
-              Skip for now
+              Upgrade Plan
             </button>
           </div>
         </>
@@ -168,21 +196,27 @@ function StepNumber({ onNext, request, toast }) {
 /* ── Step 3: Connect OpenClaw ──────────────────── */
 function StepConnect({ onNext, request, toast }) {
   const [apiKey, setApiKey] = useState(null);
+  const [hasExistingKey, setHasExistingKey] = useState(false);
+  const [existingKeyId, setExistingKeyId] = useState(null);
+  const [isNewKey, setIsNewKey] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [skillContent, setSkillContent] = useState(null);
   const [loadingKey, setLoadingKey] = useState(true);
   const [loadingSkill, setLoadingSkill] = useState(true);
 
   useEffect(() => {
-    // Auto-generate API key if none exists
     (async () => {
       const keys = await request('/api/keys/list');
-      if (keys && keys.keys && keys.keys.length > 0) {
-        setApiKey(keys.keys[0].key_prefix + '…');
+      const activeKeys = keys?.keys?.filter((k) => k.is_active) ?? [];
+      if (activeKeys.length > 0) {
+        setHasExistingKey(true);
+        setExistingKeyId(activeKeys[0].id);
         setLoadingKey(false);
       } else {
         const created = await request('/api/keys/create', { method: 'POST' });
         if (created && created.key) {
           setApiKey(created.key);
+          setIsNewKey(true);
         }
         setLoadingKey(false);
       }
@@ -194,6 +228,31 @@ function StepConnect({ onNext, request, toast }) {
       .then((text) => { setSkillContent(text); setLoadingSkill(false); })
       .catch(() => { setSkillContent('// Could not load skill file'); setLoadingSkill(false); });
   }, []);
+
+  const handleRegenerate = async () => {
+    setRegenerating(true);
+    try {
+      if (existingKeyId) {
+        await request('/api/keys/revoke', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key_id: existingKeyId }),
+        });
+      }
+      const created = await request('/api/keys/create', { method: 'POST' });
+      if (created && created.key) {
+        setApiKey(created.key);
+        setIsNewKey(true);
+        setHasExistingKey(false);
+        setExistingKeyId(null);
+      } else {
+        toast('Failed to regenerate key', 'error');
+      }
+    } catch {
+      toast('Failed to regenerate key', 'error');
+    }
+    setRegenerating(false);
+  };
 
   const copyText = async (text, label) => {
     try {
@@ -218,30 +277,51 @@ function StepConnect({ onNext, request, toast }) {
         </label>
         {loadingKey ? (
           <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Generating…</span>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div
-              style={{
-                flex: 1,
-                background: 'var(--bg)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)',
-                padding: '8px 12px',
-                fontSize: '0.85rem',
-                wordBreak: 'break-all',
-              }}
-            >
-              {apiKey}
-            </div>
+        ) : hasExistingKey ? (
+          <div>
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: 12 }}>
+              API key was previously generated and cannot be shown again.
+            </p>
             <button
               class="btn btn-secondary"
-              style={{ padding: '6px 10px', flexShrink: 0 }}
-              onClick={() => copyText(apiKey, 'API key')}
-              aria-label="Copy API key"
+              style={{ fontSize: '0.85rem' }}
+              disabled={regenerating}
+              onClick={handleRegenerate}
             >
-              <CopyIcon width={16} height={16} />
+              {regenerating ? 'Regenerating…' : 'Regenerate Key'}
             </button>
           </div>
+        ) : isNewKey && apiKey ? (
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <div
+                style={{
+                  flex: 1,
+                  background: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '8px 12px',
+                  fontSize: '0.85rem',
+                  wordBreak: 'break-all',
+                }}
+              >
+                {apiKey}
+              </div>
+              <button
+                class="btn btn-secondary"
+                style={{ padding: '6px 10px', flexShrink: 0 }}
+                onClick={() => copyText(apiKey, 'API key')}
+                aria-label="Copy API key"
+              >
+                <CopyIcon width={16} height={16} />
+              </button>
+            </div>
+            <p style={{ fontSize: '0.8rem', color: 'var(--warning, #e6a700)', fontWeight: 600 }}>
+              Save this key now — it won't be shown again.
+            </p>
+          </div>
+        ) : (
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No key available.</span>
         )}
       </div>
 
@@ -305,7 +385,7 @@ function StepConnect({ onNext, request, toast }) {
 }
 
 /* ── Step 4: First Test Call ───────────────────── */
-function StepCall({ user, request, toast }) {
+function StepCall({ user, request, toast, refresh }) {
   const [phone, setPhone] = useState(user.phone || '');
   const [goal, setGoal] = useState('');
   const [calling, setCalling] = useState(false);
@@ -332,19 +412,15 @@ function StepCall({ user, request, toast }) {
     if (!phone || !goal.trim() || calling) return;
     setCalling(true);
     try {
-      const res = await fetch('/api/openclaw/call', {
+      const res = await request('/api/openclaw/call', {
         method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ destination_phone: phone, message: goal }),
       });
-      const json = await res.json();
-      if (!res.ok) {
-        toast(json?.error?.message || 'Failed to place call', 'error');
+      if (res && res.call_id) {
+        setCallId(res.call_id);
+      } else {
         setCalling(false);
-        return;
       }
-      setCallId(json.call_id);
     } catch (err) {
       toast(err.message || 'Network error', 'error');
       setCalling(false);
@@ -353,12 +429,12 @@ function StepCall({ user, request, toast }) {
 
   const completeOnboarding = async () => {
     setCompleting(true);
-    await fetch('/api/auth/onboarding-complete', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-    });
-    route('/dashboard/');
+    try {
+      await finishOnboarding(refresh);
+    } catch {
+      toast('Failed to complete onboarding', 'error');
+      setCompleting(false);
+    }
   };
 
   const canSubmit = phone && goal.trim() && !calling && !callId;
@@ -490,7 +566,7 @@ function StepCall({ user, request, toast }) {
 
 /* ── Main Onboarding Component ─────────────────── */
 export default function Onboarding() {
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
   const { request } = useApi();
   const toast = useToast();
 
@@ -522,9 +598,9 @@ export default function Onboarding() {
 
         <div class="card" style={{ padding: 32 }}>
           {step === 1 && <StepWelcome user={user} onNext={goNext} />}
-          {step === 2 && <StepNumber onNext={goNext} request={request} toast={toast} />}
+          {step === 2 && <StepNumber user={user} onNext={goNext} request={request} toast={toast} />}
           {step === 3 && <StepConnect onNext={goNext} request={request} toast={toast} />}
-          {step === 4 && <StepCall user={user} request={request} toast={toast} />}
+          {step === 4 && <StepCall user={user} request={request} toast={toast} refresh={refresh} />}
         </div>
       </div>
     </div>
