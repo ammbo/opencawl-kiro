@@ -67,7 +67,13 @@ export function buildElevenLabsPayload(agentId, phoneNumberId, destinationPhone,
 
   if (overrides.system_prompt != null) {
     if (!configOverride.agent) configOverride.agent = {};
-    configOverride.agent.prompt = { prompt: overrides.system_prompt };
+    // When there's both a custom system prompt and a goal/message,
+    // inject the goal into the prompt so the agent knows what to do
+    let prompt = overrides.system_prompt;
+    if (message != null && message !== '') {
+      prompt += `\n\nYour goal for this call: ${message}`;
+    }
+    configOverride.agent.prompt = { prompt };
     hasOverride = true;
   }
 

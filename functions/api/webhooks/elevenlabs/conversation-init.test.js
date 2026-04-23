@@ -164,7 +164,7 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
     expect(data.dynamic_variables.user_id).toBe('user-outbound');
     expect(data.dynamic_variables.call_id).toBe('call-123');
     expect(data.dynamic_variables.message).toBe('Congratulate them');
-    expect(data.conversation_config_override.agent.prompt.prompt).toBe('Be a clown');
+    expect(data.conversation_config_override.agent.prompt.prompt).toBe('Be a clown\n\nYour goal for this call: Congratulate them');
     expect(data.conversation_config_override.tts.voice_id).toBe('voice-clown');
   });
 

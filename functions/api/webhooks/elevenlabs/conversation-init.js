@@ -307,6 +307,12 @@ export async function onRequestPost(context) {
         if (callRecord.override_system_prompt) overrides.prompt = callRecord.override_system_prompt;
         else if (callRecord.user_system_prompt) overrides.prompt = callRecord.user_system_prompt;
 
+        // When there's a goal AND a system prompt, inject the goal into the prompt
+        // so the agent actually knows what it's supposed to do on this call
+        if (callRecord.goal && overrides.prompt) {
+          overrides.prompt += `\n\nYour goal for this call: ${callRecord.goal}`;
+        }
+
         if (callRecord.override_voice_id) overrides.voice_id = callRecord.override_voice_id;
         else if (callRecord.user_voice_id) overrides.voice_id = callRecord.user_voice_id;
 
