@@ -16,3 +16,6 @@ dist/
 # Editor
 .DS_Store
 *.log
+
+# Review docs with local paths
+OPENCAWL_UX_REVIEW.md
