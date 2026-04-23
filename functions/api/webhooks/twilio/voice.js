@@ -50,38 +50,19 @@ export async function onRequestPost(context) {
     const rawBody = await context.request.text();
     const params = parseFormBody(rawBody);
 
-    console.log('[twilio-voice] === INBOUND CALL ===');
-    console.log('[twilio-voice] Called:', params.Called);
-    console.log('[twilio-voice] From:', params.From);
-    console.log('[twilio-voice] CallSid:', params.CallSid);
-    console.log('[twilio-voice] Direction:', params.Direction);
-    console.log('[twilio-voice] URL:', context.request.url);
+    console.log(`[twilio-voice] Inbound: From=${params.From} Called=${params.Called} Sid=${params.CallSid}`);
 
     const signature = context.request.headers.get('X-Twilio-Signature') || '';
-    const url = context.request.url;
-
-    const isValid = await verifyTwilioSignature(url, params, signature, env.TWILIO_AUTH_TOKEN);
+    const isValid = await verifyTwilioSignature(context.request.url, params, signature, env.TWILIO_AUTH_TOKEN);
     if (!isValid) {
-      console.error('[twilio-voice] SIGNATURE VALIDATION FAILED');
-      console.error('[twilio-voice] Signature header:', signature ? 'present' : 'MISSING');
+      console.error('[twilio-voice] Signature validation failed');
       return twimlResponse(
         '<?xml version="1.0" encoding="UTF-8"?><Response><Say>Request validation failed.</Say></Response>',
         403,
       );
     }
 
-    console.log('[twilio-voice] Signature valid');
-
     const agentId = env.ELEVENLABS_AGENT_ID;
-    if (!agentId) {
-      console.error('[twilio-voice] ELEVENLABS_AGENT_ID is not set!');
-      return twimlResponse(
-        '<?xml version="1.0" encoding="UTF-8"?><Response><Say>System configuration error.</Say></Response>',
-        500,
-      );
-    }
-
-    console.log('[twilio-voice] Agent ID:', agentId);
 
     const twiml = [
       '<?xml version="1.0" encoding="UTF-8"?>',
@@ -93,12 +74,9 @@ export async function onRequestPost(context) {
       '</Response>',
     ].join('\n');
 
-    console.log('[twilio-voice] Returning TwiML with Stream to ElevenLabs');
-    console.log('[twilio-voice] TwiML:', twiml);
-
     return twimlResponse(twiml);
   } catch (err) {
-    console.error('[twilio-voice] UNCAUGHT ERROR:', err.message || err, err.stack);
+    console.error('[twilio-voice] Error:', err.message || err);
     return twimlResponse(
       '<?xml version="1.0" encoding="UTF-8"?><Response><Say>An error occurred. Please try again later.</Say></Response>',
       500,

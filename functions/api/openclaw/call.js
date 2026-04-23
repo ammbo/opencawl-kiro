@@ -93,15 +93,7 @@ export async function onRequestPost(context) {
     const elevenLabsKey = context.env.ELEVENLABS_API_KEY;
     const fromNumber = user.elevenlabs_phone_number_id || context.env.ELEVENLABS_PHONE_NUMBER_ID;
 
-    console.log('[openclaw/call] === OUTBOUND CALL ===');
-    console.log('[openclaw/call] callId:', callId);
-    console.log('[openclaw/call] userId:', user.id);
-    console.log('[openclaw/call] destination:', destination_phone);
-    console.log('[openclaw/call] agentId:', agentId);
-    console.log('[openclaw/call] fromNumber (elevenlabs_phone_number_id):', fromNumber);
-    console.log('[openclaw/call] user.twilio_phone_number:', user.twilio_phone_number);
-    console.log('[openclaw/call] user.elevenlabs_phone_number_id:', user.elevenlabs_phone_number_id);
-    console.log('[openclaw/call] env.ELEVENLABS_PHONE_NUMBER_ID:', context.env.ELEVENLABS_PHONE_NUMBER_ID ? 'SET' : 'NOT SET');
+    console.log(`[openclaw/call] callId=${callId} dest=${destination_phone} from=${fromNumber}`);
 
     const overrides = {};
     if (system_prompt) overrides.system_prompt = system_prompt;
@@ -109,8 +101,6 @@ export async function onRequestPost(context) {
     if (first_message) overrides.first_message = first_message;
 
     const elevenLabsPayload = buildElevenLabsPayload(agentId, fromNumber, destination_phone, user, overrides, message);
-
-    console.log('[openclaw/call] ElevenLabs payload:', JSON.stringify(elevenLabsPayload));
 
     const elResponse = await fetch(
       'https://api.elevenlabs.io/v1/convai/twilio/outbound-call',
