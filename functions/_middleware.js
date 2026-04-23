@@ -37,8 +37,19 @@ export const onRequest = [
     const url = new URL(context.request.url);
     const path = url.pathname;
 
-    // Non-API paths (static assets) — pass through
+    // Non-API paths (static assets) — pass through.
+    // For /dashboard/* sub-routes, rewrite to /dashboard/index.html so the
+    // SPA client-side router handles them on hard refresh / direct navigation.
     if (!path.startsWith('/api/')) {
+      if (
+        path.startsWith('/dashboard/') &&
+        path !== '/dashboard/' &&
+        path !== '/dashboard/index.html' &&
+        !path.match(/\.\w+$/) // skip actual file requests (e.g. .js, .css)
+      ) {
+        const spaUrl = new URL('/dashboard/index.html', url.origin);
+        return context.env.ASSETS.fetch(new Request(spaUrl, context.request));
+      }
       return context.next();
     }
 

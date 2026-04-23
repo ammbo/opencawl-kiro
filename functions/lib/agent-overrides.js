@@ -50,7 +50,7 @@ export function buildElevenLabsPayload(agentId, fromNumber, destinationPhone, us
   const payload = {
     agent_id: agentId,
     agent_phone_number_id: fromNumber,
-    to_phone_number: destinationPhone,
+    to_number: destinationPhone,
   };
 
   const dynamicVars = {
