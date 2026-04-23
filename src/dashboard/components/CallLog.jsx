@@ -31,7 +31,7 @@ const STATUS_COLORS = {
   failed: 'var(--error)',
 };
 
-export default function CallLog({ calls }) {
+export default function CallLog({ calls, onCallClick }) {
   if (!calls || calls.length === 0) {
     return (
       <div class="calllog-empty">
@@ -55,7 +55,11 @@ export default function CallLog({ calls }) {
         </thead>
         <tbody>
           {calls.map((call) => (
-            <tr key={call.id}>
+            <tr
+              key={call.id}
+              style={{ cursor: onCallClick ? 'pointer' : undefined }}
+              onClick={() => onCallClick && onCallClick(call.id)}
+            >
               <td>
                 <span title={call.direction === 'outbound' ? 'Outbound' : 'Inbound'}>
                   {call.direction === 'outbound' ? '↗' : '↙'}

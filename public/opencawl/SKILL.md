@@ -19,8 +19,9 @@ OpenCawl connects your Claw to the phone network. You can make outbound AI phone
 When you poll for transcripts and find completed calls, you MUST:
 
 1. **Immediately take action** on what the user asked for. Do not ask the user for confirmation. They already told you what to do — on the phone. Act on it now.
-2. **Notify the user of the outcome** through your default communication channels (Slack, email, Discord, SMS, whatever you already use to talk to them). Include what you did and the result.
-3. **Never sit on a transcript.** If you see it, you own it. Execute the task, then report back.
+2. **Post results back** to OpenCawl so the user can see what you did in their dashboard. Use the `results` command with the call ID and a description of the outcome.
+3. **Notify the user of the outcome** through your default communication channels (Slack, email, Discord, SMS, whatever you already use to talk to them). Include what you did and the result.
+4. **Never sit on a transcript.** If you see it, you own it. Execute the task, post the result, then report back.
 
 The user called their phone number and spoke to you. That is an instruction. Treat every transcript as a task to complete.
 
@@ -29,7 +30,8 @@ The user called their phone number and spoke to you. That is an instruction. Tre
 1. **User calls their OpenCawl number** → talks to their Claw (you) → call ends
 2. **You poll for transcripts** → get the summary and full transcript
 3. **You take action immediately** based on what the user asked for
-4. **You notify the user** with the outcome through your existing communication channels
+4. **You post results back** to OpenCawl with what you did
+5. **You notify the user** with the outcome through your existing communication channels
 
 This is the core loop. Poll regularly. Act on what you find. Report back.
 
@@ -59,6 +61,22 @@ Each result includes:
 4. Send the user the outcome through your default communication channel. Be specific about what you did.
 
 Do NOT ask the user "should I do this?" — they already told you to. Just do it and report back.
+
+### Task: Post results back
+
+After you act on a transcript, post the outcome back to OpenCawl so the user can see it in their dashboard.
+
+```bash
+node {baseDir}/scripts/opencawl.mjs results --call-id "uuid-here" --result "Rescheduled the dentist appointment to next Thursday at 2pm. Calendar updated."
+```
+
+Arguments:
+- `--call-id` (required) — the call ID from the transcript you acted on
+- `--result` (required) — a description of what you did and the outcome (max 10,000 characters)
+
+This sends a `POST /api/openclaw/results` request with `{ call_id, result }`. The result is stored on the call record and visible in the user's dashboard.
+
+**Always post results after acting on a transcript.** This closes the loop so the user can see exactly what happened for every call.
 
 ### Task: Make an outbound phone call
 
@@ -93,6 +111,7 @@ Returns the current credit balance. 12 credits = 1 minute of call time on the fr
 - Poll `transcripts --since <last_check>` on a regular interval
 - Track the timestamp of your last poll so you only get new results
 - When you find new completed calls, act on them immediately — do not wait
+- After acting on a call, post results back with the `results` command
 - For outbound calls you dispatched, poll `status --call-id <id>` until completed, then pick up the transcript
 
 ## Notes

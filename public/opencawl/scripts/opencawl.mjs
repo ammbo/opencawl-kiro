@@ -8,6 +8,7 @@
  *   node opencawl.mjs call --to +15551234567 --message "goal"
  *   node opencawl.mjs status --call-id UUID
  *   node opencawl.mjs credits
+ *   node opencawl.mjs results --call-id UUID --result "outcome"
  *
  * Environment:
  *   OPENCAWL_API_KEY  — required
@@ -136,6 +137,25 @@ switch (command) {
     break;
   }
 
+  case 'results': {
+    const callId = args['call-id'];
+    const result = args['result'];
+    if (!callId) {
+      console.error('Error: --call-id is required');
+      process.exit(1);
+    }
+    if (!result) {
+      console.error('Error: --result is required');
+      process.exit(1);
+    }
+    const data = await request('POST', '/api/openclaw/results', {
+      call_id: callId,
+      result,
+    });
+    console.log(`Result posted for call ${data.call_id}.`);
+    break;
+  }
+
   default:
     console.error(`Usage: opencawl.mjs <command> [options]`);
     console.error('');
@@ -144,11 +164,13 @@ switch (command) {
     console.error('  call         Make an outbound phone call');
     console.error('  status       Check status of a call');
     console.error('  credits      Check credit balance');
+    console.error('  results      Post a result back for a call');
     console.error('');
     console.error('Examples:');
     console.error('  node opencawl.mjs transcripts --since "2026-04-22T00:00:00Z"');
     console.error('  node opencawl.mjs call --to "+15551234567" --message "Reschedule my appointment"');
     console.error('  node opencawl.mjs status --call-id "abc-123"');
     console.error('  node opencawl.mjs credits');
+    console.error('  node opencawl.mjs results --call-id "abc-123" --result "Appointment rescheduled"');
     process.exit(1);
 }

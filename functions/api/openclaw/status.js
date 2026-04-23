@@ -46,9 +46,15 @@ export async function onRequestGet(context) {
 
     return json({
       call_id: row.id,
+      direction: row.direction,
+      destination_phone: row.destination_phone ?? null,
       status: row.status,
       duration_seconds: row.duration_seconds,
       transcript: row.transcript,
+      summary: row.summary ?? null,
+      openclaw_result: row.openclaw_result ?? null,
+      goal: row.goal ?? null,
+      created_at: row.created_at,
       agent_override: hasOverride
         ? {
             system_prompt: row.override_system_prompt ?? null,

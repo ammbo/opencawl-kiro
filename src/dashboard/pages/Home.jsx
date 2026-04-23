@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth.jsx';
 import { useApi } from '../hooks/useApi.js';
 import { CoinsIcon, PhoneIcon, MicIcon, BarChartIcon } from '../components/Icons.jsx';
 import CallLog from '../components/CallLog.jsx';
+import CallDetail from '../components/CallDetail.jsx';
 import { formatPhone } from '../utils/phone.js';
 
 export default function Home() {
@@ -10,6 +11,7 @@ export default function Home() {
   const { request, loading } = useApi();
   const [calls, setCalls] = useState([]);
   const [usage, setUsage] = useState(null);
+  const [selectedCallId, setSelectedCallId] = useState(null);
 
   useEffect(() => {
     request('/api/billing/usage').then((data) => {
@@ -69,9 +71,16 @@ export default function Home() {
         {loading ? (
           <div class="placeholder-page">Loading calls…</div>
         ) : (
-          <CallLog calls={calls} />
+          <CallLog calls={calls} onCallClick={setSelectedCallId} />
         )}
       </div>
+
+      {selectedCallId && (
+        <CallDetail
+          callId={selectedCallId}
+          onClose={() => setSelectedCallId(null)}
+        />
+      )}
     </div>
   );
 }

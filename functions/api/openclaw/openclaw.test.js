@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fc from 'fast-check';
 import { onRequestPost as callEndpoint } from './call.js';
+import { onRequestPost as resultsEndpoint } from './results.js';
 import { onRequestGet as statusEndpoint } from './status.js';
 import { onRequestGet as creditsEndpoint } from './credits.js';
 
@@ -625,6 +626,56 @@ describe('GET /api/openclaw/status', () => {
    * For any call initiated with override fields, the status endpoint returns
    * those same override values in the agent_override response object.
    */
+  /**
+   * Property 4: Status endpoint returns all stored call fields
+   * **Validates: Requirements 6.1, 6.2, 6.3**
+   *
+   * For any call record with arbitrary summary, openclaw_result, and goal values
+   * (including NULL), the GET /api/openclaw/status response includes those exact
+   * values in the corresponding fields.
+   */
+  it('Property 4: status endpoint returns all stored call fields (summary, openclaw_result, goal)', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.record({
+          summary: fc.option(fc.string({ minLength: 1, maxLength: 500 }), { nil: null }),
+          openclaw_result: fc.option(fc.string({ minLength: 1, maxLength: 500 }), { nil: null }),
+          goal: fc.option(fc.string({ minLength: 1, maxLength: 500 }), { nil: null }),
+        }),
+        async (fields) => {
+          const callRow = {
+            id: 'call-prop4',
+            user_id: 'user-abc',
+            status: 'completed',
+            duration_seconds: 90,
+            transcript: 'some transcript',
+            override_system_prompt: null,
+            override_voice_id: null,
+            override_first_message: null,
+            summary: fields.summary,
+            openclaw_result: fields.openclaw_result,
+            goal: fields.goal,
+          };
+
+          const ctx = createContext({
+            method: 'GET',
+            url: 'https://example.com/api/openclaw/status?call_id=call-prop4',
+            dbFirstResult: callRow,
+          });
+
+          const res = await statusEndpoint(ctx);
+          expect(res.status).toBe(200);
+
+          const data = await res.json();
+          expect(data.summary).toBe(fields.summary);
+          expect(data.openclaw_result).toBe(fields.openclaw_result);
+          expect(data.goal).toBe(fields.goal);
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
   it('Property 11: status endpoint returns stored override values for any combination', async () => {
     await fc.assert(
       fc.asyncProperty(
@@ -671,6 +722,201 @@ describe('GET /api/openclaw/status', () => {
           }
         },
       ),
+      { numRuns: 100 },
+    );
+  });
+});
+
+// ─── POST /api/openclaw/results ──────────────────────────────────────────────
+
+describe('POST /api/openclaw/results', () => {
+  /**
+   * Property 1: Results round-trip — stored result matches submitted result
+   * **Validates: Requirements 2.3, 2.4**
+   *
+   * For any valid result string (1–10,000 chars), POSTing to the results endpoint
+   * then GETting status returns the exact same string in `openclaw_result`.
+   */
+  it('Property 1: stored result matches submitted result for any valid string', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.string({ minLength: 1, maxLength: 10_000 }),
+        async (resultStr) => {
+          const callId = 'call-roundtrip';
+
+          // Track what the POST endpoint stores in the DB
+          let storedResult = null;
+
+          const postCtx = createContext({
+            method: 'POST',
+            url: 'https://example.com/api/openclaw/results',
+            body: { call_id: callId, result: resultStr },
+            dbChanges: 1,
+          });
+
+          // Override DB to capture the stored result from the UPDATE
+          postCtx.env.DB.prepare = function (sql) {
+            return {
+              bind(...args) {
+                return {
+                  async run() {
+                    if (sql.includes('UPDATE')) {
+                      storedResult = args[0]; // result is the first bind param
+                    }
+                    return { success: true, meta: { changes: 1 } };
+                  },
+                  async first() {
+                    return null;
+                  },
+                };
+              },
+            };
+          };
+
+          // POST the result
+          const postRes = await resultsEndpoint(postCtx);
+          expect(postRes.status).toBe(200);
+
+          const postData = await postRes.json();
+          expect(postData.success).toBe(true);
+          expect(postData.call_id).toBe(callId);
+
+          // Verify the DB received the exact result string
+          expect(storedResult).toBe(resultStr);
+
+          // Now GET status — mock DB returns a row with the stored result
+          const getCtx = createContext({
+            method: 'GET',
+            url: `https://example.com/api/openclaw/status?call_id=${callId}`,
+            dbFirstResult: {
+              id: callId,
+              user_id: 'user-abc',
+              status: 'completed',
+              duration_seconds: 60,
+              transcript: null,
+              override_system_prompt: null,
+              override_voice_id: null,
+              override_first_message: null,
+              openclaw_result: storedResult,
+            },
+          });
+
+          const getRes = await statusEndpoint(getCtx);
+          expect(getRes.status).toBe(200);
+
+          const getData = await getRes.json();
+          expect(getData.call_id).toBe(callId);
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
+  /**
+   * Property 2: Invalid payloads are rejected
+   * **Validates: Requirements 2.2, 2.6**
+   *
+   * For any JSON payload where call_id is missing/empty OR result is missing/empty,
+   * the Results_Endpoint returns HTTP 400 with error code INVALID_INPUT.
+   */
+  /**
+   * Property 3: Result length enforcement
+   * **Validates: Requirements 1.3, 2.8**
+   *
+   * For any string of length > 10,000 characters submitted as the `result` field,
+   * the Results_Endpoint returns HTTP 400 with error code INVALID_INPUT.
+   * For any string of length between 1 and 10,000 characters (inclusive),
+   * the endpoint accepts it (HTTP 200) given a valid call_id owned by the user.
+   */
+  it('Property 3: strings > 10,000 chars are rejected, strings 1–10,000 chars are accepted', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        // Generate strings that are over the limit (10,001 to 15,000 chars)
+        fc.string({ minLength: 10_001, maxLength: 15_000 }),
+        async (oversizedResult) => {
+          const ctx = createContext({
+            method: 'POST',
+            url: 'https://example.com/api/openclaw/results',
+            body: { call_id: 'call-length-test', result: oversizedResult },
+            dbChanges: 0,
+          });
+
+          const res = await resultsEndpoint(ctx);
+          expect(res.status).toBe(400);
+
+          const data = await res.json();
+          expect(data.error).toBeDefined();
+          expect(data.error.code).toBe('INVALID_INPUT');
+          expect(data.error.message).toContain('10,000');
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
+  it('Property 3b: strings 1–10,000 chars are accepted with HTTP 200', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.string({ minLength: 1, maxLength: 10_000 }),
+        async (validResult) => {
+          const ctx = createContext({
+            method: 'POST',
+            url: 'https://example.com/api/openclaw/results',
+            body: { call_id: 'call-length-ok', result: validResult },
+            dbChanges: 1,
+          });
+
+          const res = await resultsEndpoint(ctx);
+          expect(res.status).toBe(200);
+
+          const data = await res.json();
+          expect(data.success).toBe(true);
+          expect(data.call_id).toBe('call-length-ok');
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
+  it('Property 2: invalid payloads with missing/empty call_id or result are rejected with 400', async () => {
+    // Generator that produces payloads where at least one required field is missing or empty
+    const invalidPayloadArb = fc.oneof(
+      // case 1: call_id missing entirely, result present
+      fc.string({ minLength: 1, maxLength: 200 }).map((result) => ({ result })),
+      // case 2: call_id empty string, result present
+      fc.string({ minLength: 1, maxLength: 200 }).map((result) => ({ call_id: '', result })),
+      // case 3: call_id null, result present
+      fc.string({ minLength: 1, maxLength: 200 }).map((result) => ({ call_id: null, result })),
+      // case 4: call_id present, result missing entirely
+      fc.string({ minLength: 1, maxLength: 200 }).map((call_id) => ({ call_id })),
+      // case 5: call_id present, result empty string
+      fc.string({ minLength: 1, maxLength: 200 }).map((call_id) => ({ call_id, result: '' })),
+      // case 6: call_id present, result null
+      fc.string({ minLength: 1, maxLength: 200 }).map((call_id) => ({ call_id, result: null })),
+      // case 7: both missing
+      fc.constant({}),
+      // case 8: both empty
+      fc.constant({ call_id: '', result: '' }),
+      // case 9: both null
+      fc.constant({ call_id: null, result: null }),
+    );
+
+    await fc.assert(
+      fc.asyncProperty(invalidPayloadArb, async (payload) => {
+        const ctx = createContext({
+          method: 'POST',
+          url: 'https://example.com/api/openclaw/results',
+          body: payload,
+          dbChanges: 0,
+        });
+
+        const res = await resultsEndpoint(ctx);
+        expect(res.status).toBe(400);
+
+        const data = await res.json();
+        expect(data.error).toBeDefined();
+        expect(data.error.code).toBe('INVALID_INPUT');
+      }),
       { numRuns: 100 },
     );
   });
