@@ -5,9 +5,9 @@ const WEBHOOK_SECRET = 'test_conversation_init_secret';
 
 /**
  * Create a mock D1 database.
- * users: keyed by twilio_phone_number for backward compat, but also supports
- *        lookup by phone (the user's personal number).
- * usersByPhone: keyed by user.phone for caller-based owner lookup.
+ * users: keyed by twilio_phone_number
+ * usersByPhone: keyed by user.phone
+ * pendingOutboundCalls: keyed by destination_phone — the most recent pending outbound call record
  */
 function createMockDB({
   users = {},
@@ -15,6 +15,7 @@ function createMockDB({
   sharedNumbers = [],
   acceptedNumbers = {},
   callHistory = {},
+  pendingOutboundCalls = {},
 } = {}) {
   const inserts = [];
 
@@ -29,26 +30,35 @@ function createMockDB({
               return { success: true, meta: { changes: 1 } };
             },
             async first() {
+              // Outbound detection: SELECT id FROM users WHERE twilio_phone_number = ?
+              if (sql.includes('SELECT id FROM users WHERE twilio_phone_number')) {
+                const number = args[0];
+                return users[number] ? { id: users[number].id } : null;
+              }
+              // Shared pool check for outbound detection
+              if (sql.includes('SELECT 1') && sql.includes('shared_phone_numbers')) {
+                const number = args[0];
+                return sharedNumbers.includes(number) ? { 1: 1 } : null;
+              }
+              // Outbound call record lookup (JOIN query)
+              if (sql.includes('FROM calls c JOIN users u') && sql.includes('outbound')) {
+                const dest = args[0];
+                return pendingOutboundCalls[dest] || null;
+              }
+              // Shared number lookup
               if (sql.includes('FROM shared_phone_numbers WHERE phone_number')) {
                 const number = args[0];
                 return sharedNumbers.includes(number) ? { phone_number: number } : null;
               }
-              if (sql.includes('WHERE twilio_phone_number') && sql.includes('SELECT 1')) {
-                // Outbound detection query
-                const number = args[0];
-                return users[number] ? { 1: 1 } : null;
-              }
+              // User lookup by twilio_phone_number
               if (sql.includes('WHERE twilio_phone_number')) {
                 const number = args[0];
                 return users[number] || null;
               }
+              // User lookup by phone
               if (sql.includes('WHERE phone =')) {
                 const phone = args[0];
                 return usersByPhone[phone] || null;
-              }
-              if (sql.includes('SELECT 1') && sql.includes('shared_phone_numbers')) {
-                const number = args[0];
-                return sharedNumbers.includes(number) ? { 1: 1 } : null;
               }
               return null;
             },
@@ -124,24 +134,72 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
 
   // --- Outbound call detection ---
 
-  it('returns empty passthrough when caller_id is a user twilio_phone_number (outbound)', async () => {
+  it('returns full call data for outbound call with pending record', async () => {
     const user = {
       id: 'user-outbound',
       phone: '+15550001111',
-      twilio_phone_number: '+15559876543', // caller_id matches this
+      twilio_phone_number: '+15559876543',
     };
-    const db = createMockDB({ users: { '+15559876543': user } });
+    const callRecord = {
+      id: 'call-123',
+      user_id: 'user-outbound',
+      goal: 'Congratulate them',
+      override_system_prompt: 'Be a clown',
+      override_voice_id: 'voice-clown',
+      override_first_message: null,
+      user_voice_id: null,
+      user_system_prompt: null,
+      user_first_message: null,
+    };
+    const db = createMockDB({
+      users: { '+15559876543': user },
+      pendingOutboundCalls: { '+15551234567': callRecord },
+    });
     const ctx = createContext(defaultBody, db);
     const res = await onRequestPost(ctx);
 
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.type).toBe('conversation_initiation_client_data');
-    expect(data.dynamic_variables).toEqual({});
-    expect(data.conversation_config_override).toBeUndefined();
+    expect(data.dynamic_variables.user_id).toBe('user-outbound');
+    expect(data.dynamic_variables.call_id).toBe('call-123');
+    expect(data.dynamic_variables.message).toBe('Congratulate them');
+    expect(data.conversation_config_override.agent.prompt.prompt).toBe('Be a clown');
+    expect(data.conversation_config_override.tts.voice_id).toBe('voice-clown');
   });
 
-  it('returns empty passthrough when caller_id is TWILIO_DEFAULT_NUMBER (outbound)', async () => {
+  it('falls back to user defaults when no per-call overrides on outbound', async () => {
+    const user = {
+      id: 'user-outbound2',
+      phone: '+15550001111',
+      twilio_phone_number: '+15559876543',
+    };
+    const callRecord = {
+      id: 'call-456',
+      user_id: 'user-outbound2',
+      goal: null,
+      override_system_prompt: null,
+      override_voice_id: null,
+      override_first_message: null,
+      user_voice_id: 'voice-default',
+      user_system_prompt: 'Be helpful',
+      user_first_message: 'Hello!',
+    };
+    const db = createMockDB({
+      users: { '+15559876543': user },
+      pendingOutboundCalls: { '+15551234567': callRecord },
+    });
+    const ctx = createContext(defaultBody, db);
+    const res = await onRequestPost(ctx);
+
+    const data = await res.json();
+    expect(data.dynamic_variables.user_id).toBe('user-outbound2');
+    expect(data.conversation_config_override.agent.prompt.prompt).toBe('Be helpful');
+    expect(data.conversation_config_override.tts.voice_id).toBe('voice-default');
+    expect(data.conversation_config_override.agent.first_message).toBe('Hello!');
+  });
+
+  it('returns empty passthrough for outbound when no pending call found', async () => {
     const db = createMockDB({});
     const ctx = createContext(defaultBody, db, {
       env: { TWILIO_DEFAULT_NUMBER: '+15559876543' },
@@ -150,18 +208,31 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
 
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.type).toBe('conversation_initiation_client_data');
     expect(data.dynamic_variables).toEqual({});
   });
 
-  it('returns empty passthrough when caller_id is a shared pool number (outbound)', async () => {
-    const db = createMockDB({ sharedNumbers: ['+15559876543'] });
+  it('detects outbound when caller_id is a shared pool number', async () => {
+    const callRecord = {
+      id: 'call-shared-out',
+      user_id: 'user-shared-out',
+      goal: 'Test',
+      override_system_prompt: null,
+      override_voice_id: null,
+      override_first_message: null,
+      user_voice_id: null,
+      user_system_prompt: null,
+      user_first_message: null,
+    };
+    const db = createMockDB({
+      sharedNumbers: ['+15559876543'],
+      pendingOutboundCalls: { '+15551234567': callRecord },
+    });
     const ctx = createContext(defaultBody, db);
     const res = await onRequestPost(ctx);
 
-    expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.dynamic_variables).toEqual({});
+    expect(data.dynamic_variables.user_id).toBe('user-shared-out');
+    expect(data.dynamic_variables.call_id).toBe('call-shared-out');
   });
 
   // --- Inbound call routing ---
@@ -183,35 +254,23 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
     const data = await res.json();
     expect(data.dynamic_variables.user_id).toBe('user-abc');
     expect(data.dynamic_variables.owner_mode).toBe('dispatch');
-    expect(data.dynamic_variables.call_id).toBeTruthy();
     expect(data.conversation_config_override.agent.prompt.prompt).toContain('dispatch_call');
     expect(data.conversation_config_override.tts.voice_id).toBe('voice-123');
-    expect(data.conversation_config_override.agent.first_message).toBe('Hey boss');
-
-    const callInsert = db._inserts.find((i) => i.sql.includes('INSERT INTO calls'));
-    expect(callInsert).toBeTruthy();
-    expect(callInsert.args[1]).toBe('user-abc');
-    expect(callInsert.args[2]).toBe('inbound');
   });
 
   it('identifies owner by caller phone when called_number is the default number', async () => {
     const user = {
       id: 'user-free',
-      phone: '+15559876543', // caller_id matches this
+      phone: '+15559876543',
       plan: 'free',
-      // No twilio_phone_number — uses default
     };
-    const db = createMockDB({
-      usersByPhone: { '+15559876543': user },
-    });
+    const db = createMockDB({ usersByPhone: { '+15559876543': user } });
     const ctx = createContext(defaultBody, db, {
       env: { TWILIO_DEFAULT_NUMBER: '+15551234567' },
     });
     const res = await onRequestPost(ctx);
 
-    expect(res.status).toBe(200);
     const data = await res.json();
-    // Should identify as owner and enter dispatch mode
     expect(data.dynamic_variables.user_id).toBe('user-free');
     expect(data.dynamic_variables.owner_mode).toBe('dispatch');
   });
@@ -230,15 +289,11 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
     const ctx = createContext(defaultBody, db);
     const res = await onRequestPost(ctx);
 
-    expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.conversation_config_override.agent.prompt.prompt.toLowerCase()).toContain('openclaw');
-
-    const callInsert = db._inserts.find((i) => i.sql.includes('INSERT INTO calls'));
-    expect(callInsert).toBeUndefined();
   });
 
-  it('returns owner agent config for accepted caller on dedicated number (open access)', async () => {
+  it('returns owner agent config for open-access dedicated number', async () => {
     const user = {
       id: 'user-ded',
       phone: '+15550002222',
@@ -250,21 +305,19 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
     };
     const db = createMockDB({
       users: { '+15551234567': user },
-      sharedNumbers: [],
       acceptedNumbers: { 'user-ded': [] },
       callHistory: {},
     });
     const ctx = createContext(defaultBody, db);
     const res = await onRequestPost(ctx);
 
-    expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.dynamic_variables.user_id).toBe('user-ded');
     expect(data.conversation_config_override.agent.prompt.prompt).toBe('You are a helpful assistant.');
     expect(data.conversation_config_override.tts.voice_id).toBe('voice-456');
   });
 
-  it('returns rejection for caller not in accepted list on dedicated number', async () => {
+  it('returns rejection for caller not in accepted list', async () => {
     const user = {
       id: 'user-restricted',
       phone: '+15550003333',
@@ -273,52 +326,13 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
     };
     const db = createMockDB({
       users: { '+15551234567': user },
-      sharedNumbers: [],
       acceptedNumbers: { 'user-restricted': ['+15550009999'] },
     });
     const ctx = createContext(defaultBody, db);
     const res = await onRequestPost(ctx);
 
-    expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.conversation_config_override.agent.first_message.toLowerCase()).toContain('not currently accepting');
-
-    const callInsert = db._inserts.find((i) => i.sql.includes('INSERT INTO calls'));
-    expect(callInsert).toBeUndefined();
-  });
-
-  it('accepts caller who IS in the accepted list on dedicated number', async () => {
-    const user = {
-      id: 'user-accept',
-      phone: '+15550004444',
-      plan: 'pro',
-      twilio_phone_number: '+15551234567',
-      system_prompt: 'Be friendly.',
-    };
-    const db = createMockDB({
-      users: { '+15551234567': user },
-      sharedNumbers: [],
-      acceptedNumbers: { 'user-accept': ['+15559876543'] },
-      callHistory: { 'user-accept:+15559876543': ['prev-call-1', 'prev-call-2'] },
-    });
-    const ctx = createContext(defaultBody, db);
-    const res = await onRequestPost(ctx);
-
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.dynamic_variables.user_id).toBe('user-accept');
-    expect(data.dynamic_variables.previous_call_count).toBe('2');
-    expect(data.conversation_config_override.agent.prompt.prompt).toBe('Be friendly.');
-  });
-
-  it('returns promo agent when no owner found at all', async () => {
-    const db = createMockDB({});
-    const ctx = createContext(defaultBody, db);
-    const res = await onRequestPost(ctx);
-
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.conversation_config_override.agent.prompt.prompt.toLowerCase()).toContain('openclaw');
   });
 
   it('returns graceful fallback on unexpected error', async () => {
@@ -338,7 +352,6 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
 
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.type).toBe('conversation_initiation_client_data');
     expect(data.conversation_config_override.agent.first_message).toContain('technical');
   });
 

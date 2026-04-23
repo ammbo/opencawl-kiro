@@ -277,13 +277,12 @@ export async function onRequestPost(context) {
     console.log(`[conversation-init] caller=${caller_id} called=${called_number} sid=${call_sid}`);
 
     // 3. Detect outbound calls.
-    //    On outbound calls ElevenLabs still fires this webhook, but the
-    //    conversation_initiation_client_data was already provided in the
-    //    outbound API payload. We detect outbound by checking if caller_id
-    //    is one of OUR numbers (the agent is calling out). In that case,
-    //    return an empty passthrough so the original payload is used.
+    //    On outbound calls, caller_id is OUR number (the agent calling out)
+    //    and called_number is the destination. The webhook response REPLACES
+    //    the conversation_initiation_client_data from the API payload, so we
+    //    must reconstruct the full data from the pending call record.
     const callerIsOurNumber = await db
-      .prepare('SELECT 1 FROM users WHERE twilio_phone_number = ? LIMIT 1')
+      .prepare('SELECT id FROM users WHERE twilio_phone_number = ? LIMIT 1')
       .bind(caller_id)
       .first();
     const callerIsDefaultNumber = caller_id === (env.TWILIO_DEFAULT_NUMBER || '');
@@ -293,10 +292,52 @@ export async function onRequestPost(context) {
       .first();
 
     if (callerIsOurNumber || callerIsDefaultNumber || callerIsSharedPoolNumber) {
-      // Outbound call — the agent is the caller. Return empty init data
-      // so ElevenLabs uses the conversation_initiation_client_data from
-      // the outbound API request.
-      console.log(`[conversation-init] Outbound call detected (caller is our number), passing through`);
+      console.log(`[conversation-init] Outbound call detected (caller is our number)`);
+
+      // Find the most recent pending outbound call to this destination
+      const callRecord = await db
+        .prepare(
+          "SELECT c.*, u.voice_id AS user_voice_id, u.system_prompt AS user_system_prompt, u.first_message AS user_first_message FROM calls c JOIN users u ON c.user_id = u.id WHERE c.destination_phone = ? AND c.direction = 'outbound' AND c.status = 'pending' ORDER BY c.created_at DESC LIMIT 1",
+        )
+        .bind(called_number)
+        .first();
+
+      if (callRecord) {
+        const dynamicVars = {
+          user_id: callRecord.user_id,
+          call_id: callRecord.id,
+        };
+        if (callRecord.goal) {
+          dynamicVars.message = callRecord.goal;
+        }
+
+        const overrides = {};
+
+        // Per-call overrides take priority, then user defaults
+        if (callRecord.override_system_prompt) {
+          overrides.prompt = callRecord.override_system_prompt;
+        } else if (callRecord.user_system_prompt) {
+          overrides.prompt = callRecord.user_system_prompt;
+        }
+
+        if (callRecord.override_voice_id) {
+          overrides.voice_id = callRecord.override_voice_id;
+        } else if (callRecord.user_voice_id) {
+          overrides.voice_id = callRecord.user_voice_id;
+        }
+
+        if (callRecord.override_first_message) {
+          overrides.first_message = callRecord.override_first_message;
+        } else if (callRecord.user_first_message) {
+          overrides.first_message = callRecord.user_first_message;
+        }
+
+        console.log(`[conversation-init] Outbound: returning data for call=${callRecord.id} user=${callRecord.user_id}`);
+        return json(buildInitResponse(dynamicVars, overrides));
+      }
+
+      // No matching call record — return minimal passthrough
+      console.warn(`[conversation-init] Outbound: no pending call found for destination=${called_number}`);
       return json({ type: 'conversation_initiation_client_data', dynamic_variables: {} });
     }
 

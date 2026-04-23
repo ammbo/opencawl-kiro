@@ -60,7 +60,9 @@ export async function onRequestPost(context) {
   try {
     // 1. Read raw body and verify HMAC signature
     const rawBody = await context.request.text();
-    const sigHeader = context.request.headers.get('xi-signature') || '';
+    const sigHeader = context.request.headers.get('elevenlabs-signature')
+      || context.request.headers.get('xi-signature')
+      || '';
 
     const { valid, event } = await verifyElevenLabsSignature(
       rawBody, sigHeader, env.ELEVENLABS_WEBHOOK_SECRET_POST_CALL
