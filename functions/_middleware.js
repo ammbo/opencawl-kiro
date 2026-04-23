@@ -59,7 +59,11 @@ export const onRequest = [
     }
 
     // OpenClaw API routes — dual auth: Bearer token first, then session cookie fallback
+    // Exception: install-skill is public (the skill itself is public; API key is configured after install)
     if (path.startsWith('/api/openclaw/')) {
+      if (path === '/api/openclaw/install-skill') {
+        return context.next();
+      }
       // Try Bearer token auth first
       const authHeader = context.request.headers.get('Authorization') || '';
       const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);

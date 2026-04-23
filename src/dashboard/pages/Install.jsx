@@ -2,7 +2,7 @@ import { useState, useEffect } from 'preact/hooks';
 import { useApi } from '../hooks/useApi.js';
 import { useToast } from '../components/Toast.jsx';
 import { CopyIcon, KeyIcon } from '../components/Icons.jsx';
-import { formatKeyStatus, formatKeyPrefix, buildCopyToast, skillFileFallback, isGenerateDisabled, generateButtonLabel } from './install-utils.js';
+import { formatKeyStatus, formatKeyPrefix, buildCopyToast, isGenerateDisabled, generateButtonLabel } from './install-utils.js';
 
 export default function Install() {
   const { request } = useApi();
@@ -14,11 +14,7 @@ export default function Install() {
   const [loadingKeys, setLoadingKeys] = useState(true);
   const [generating, setGenerating] = useState(false);
 
-  // Skill file state
-  const [skillContent, setSkillContent] = useState(null);
-  const [loadingSkill, setLoadingSkill] = useState(true);
-
-  // Fetch existing keys and skill file on mount
+  // Fetch existing keys on mount
   useEffect(() => {
     (async () => {
       const res = await request('/api/keys/list');
@@ -27,11 +23,6 @@ export default function Install() {
       }
       setLoadingKeys(false);
     })();
-
-    fetch('/opencawl.js')
-      .then((r) => (r.ok ? r.text() : Promise.reject(new Error('Failed to load'))))
-      .then((text) => { setSkillContent(text); setLoadingSkill(false); })
-      .catch(() => { setSkillContent(skillFileFallback()); setLoadingSkill(false); });
   }, []);
 
   const handleGenerate = async () => {
@@ -39,7 +30,6 @@ export default function Install() {
     const res = await request('/api/keys/create', { method: 'POST' });
     if (res && res.key) {
       setGeneratedKey(res.key);
-      // Refresh the keys list
       const updated = await request('/api/keys/list');
       if (updated && updated.keys) setExistingKeys(updated.keys);
     }
@@ -58,22 +48,62 @@ export default function Install() {
     toast(t.message, t.type);
   };
 
+  const installCommand = `curl -fsSL ${window.location.origin}/api/openclaw/install-skill | sh`;
+  const envCommand = 'echo \'OPENCAWL_API_KEY=your-key-here\' >> ~/.openclaw/.env';
+
   return (
     <div>
       <h1 class="page-title">Install / Connect Agent</h1>
 
-      {/* Section 1: API Key Management */}
-      <div class="card" style={{ maxWidth: 600, marginBottom: 24 }}>
-        <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: 4 }}>API Key</h2>
+      {/* Section 1: Install Skill */}
+      <div class="card" style={{ maxWidth: 640, marginBottom: 24 }}>
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: 4 }}>1. Install the Skill</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: 16 }}>
-          Generate a setup key to authenticate your OpenClaw agent.
+          Run this command to install the OpenCawl skill into your OpenClaw instance.
+        </p>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <code
+            style={{
+              flex: 1,
+              background: 'var(--bg)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '10px 12px',
+              fontSize: '0.85rem',
+              fontFamily: 'monospace',
+              wordBreak: 'break-all',
+              lineHeight: 1.4,
+            }}
+          >
+            {installCommand}
+          </code>
+          <button
+            class="btn btn-secondary"
+            style={{ padding: '6px 10px', flexShrink: 0 }}
+            onClick={() => copyText(installCommand, 'Install command')}
+            aria-label="Copy install command"
+          >
+            <CopyIcon width={16} height={16} />
+          </button>
+        </div>
+
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', margin: 0 }}>
+          This installs the SKILL.md and CLI script into your OpenClaw skills directory.
+        </p>
+      </div>
+
+      {/* Section 2: API Key */}
+      <div class="card" style={{ maxWidth: 640, marginBottom: 24 }}>
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: 4 }}>2. API Key</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: 16 }}>
+          Generate an API key, then add it to your OpenClaw environment.
         </p>
 
         {loadingKeys ? (
           <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Loading…</span>
         ) : (
           <>
-            {/* Show existing keys */}
             {existingKeys.length > 0 && !generatedKey && (
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 6 }}>
@@ -105,7 +135,6 @@ export default function Install() {
               </div>
             )}
 
-            {/* Generated key display */}
             {generatedKey && (
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 6 }}>
@@ -136,7 +165,7 @@ export default function Install() {
                   </button>
                 </div>
                 <p style={{ color: 'var(--warning, var(--error))', fontSize: '0.8rem', margin: 0 }}>
-                  ⚠ This key is only shown once and cannot be retrieved later. Copy it now.
+                  ⚠ This key is only shown once. Copy it now.
                 </p>
               </div>
             )}
@@ -145,52 +174,55 @@ export default function Install() {
               class="btn btn-primary"
               disabled={isGenerateDisabled(generating)}
               onClick={handleGenerate}
+              style={{ marginBottom: 16 }}
             >
               {generateButtonLabel(generating)}
             </button>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 6 }}>
+                Then add it to your OpenClaw environment:
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <code
+                  style={{
+                    flex: 1,
+                    background: 'var(--bg)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '10px 12px',
+                    fontSize: '0.85rem',
+                    fontFamily: 'monospace',
+                    wordBreak: 'break-all',
+                  }}
+                >
+                  {envCommand}
+                </code>
+                <button
+                  class="btn btn-secondary"
+                  style={{ padding: '6px 10px', flexShrink: 0 }}
+                  onClick={() => copyText(envCommand, 'Env command')}
+                  aria-label="Copy env command"
+                >
+                  <CopyIcon width={16} height={16} />
+                </button>
+              </div>
+            </div>
           </>
         )}
       </div>
 
-      {/* Section 2: Skill File */}
-      <div class="card" style={{ maxWidth: 600 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>Skill File</h2>
-          {skillContent && (
-            <button
-              class="btn btn-secondary"
-              style={{ padding: '4px 10px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 4 }}
-              onClick={() => copyText(skillContent, 'Skill file')}
-            >
-              <CopyIcon width={14} height={14} /> Copy
-            </button>
-          )}
-        </div>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: 16 }}>
-          Add this skill file to your OpenClaw agent configuration.
+      {/* Section 3: Done */}
+      <div class="card" style={{ maxWidth: 640 }}>
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: 4 }}>3. Done</h2>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: 12 }}>
+          Your Claw now has a phone number. It can:
         </p>
-
-        {loadingSkill ? (
-          <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Loading…</span>
-        ) : (
-          <pre
-            style={{
-              background: 'var(--bg)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-sm)',
-              padding: 12,
-              fontSize: '0.8rem',
-              lineHeight: 1.5,
-              maxHeight: 320,
-              overflowY: 'auto',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all',
-              margin: 0,
-            }}
-          >
-            {skillContent}
-          </pre>
-        )}
+        <ul style={{ color: 'var(--text-muted)', fontSize: '0.85rem', paddingLeft: 20, margin: 0 }}>
+          <li style={{ marginBottom: 4 }}>Make outbound AI phone calls on your behalf</li>
+          <li style={{ marginBottom: 4 }}>Pick up transcripts from calls you make to your OpenCawl number</li>
+          <li style={{ marginBottom: 4 }}>Take action on your voice instructions and report back</li>
+        </ul>
       </div>
     </div>
   );
