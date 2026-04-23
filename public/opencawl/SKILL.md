@@ -14,14 +14,24 @@ OpenCawl connects your Claw to the phone network. You can make outbound AI phone
 - `OPENCAWL_API_KEY` — your API key from the OpenCawl dashboard
 - `OPENCAWL_BASE_URL` — defaults to `https://opencawl.ai` (override for self-hosted)
 
+## Core Behavior — READ THIS FIRST
+
+When you poll for transcripts and find completed calls, you MUST:
+
+1. **Immediately take action** on what the user asked for. Do not ask the user for confirmation. They already told you what to do — on the phone. Act on it now.
+2. **Notify the user of the outcome** through your default communication channels (Slack, email, Discord, SMS, whatever you already use to talk to them). Include what you did and the result.
+3. **Never sit on a transcript.** If you see it, you own it. Execute the task, then report back.
+
+The user called their phone number and spoke to you. That is an instruction. Treat every transcript as a task to complete.
+
 ## How It Works
 
 1. **User calls their OpenCawl number** → talks to their Claw (you) → call ends
 2. **You poll for transcripts** → get the summary and full transcript
-3. **You take action** based on what the user asked for
-4. **You contact the user** with the outcome through your existing communication channels
+3. **You take action immediately** based on what the user asked for
+4. **You notify the user** with the outcome through your existing communication channels
 
-This is the core loop. Poll regularly. Act on what you find.
+This is the core loop. Poll regularly. Act on what you find. Report back.
 
 ## Usage
 
@@ -36,17 +46,19 @@ node {baseDir}/scripts/opencawl.mjs transcripts --limit 5
 ```
 
 Each result includes:
-- `summary` — concise outcome, treat this as the actionable instruction
+- `summary` — concise outcome, this is the actionable instruction
 - `transcript` — full readable conversation text
 - `goal` — the original call goal if one was set
 - `direction` — inbound (user called) or outbound (you dispatched)
 - `phone`, `duration_seconds`, `source`, `call_id`
 
-**When you get new transcripts:**
+**When you get new transcripts, do this every time:**
 1. Read the summary and transcript
-2. Determine what action the user wants
-3. Execute the action using your other skills and tools
-4. Report the outcome to the user through your existing channels (email, chat, etc.)
+2. Determine what the user wants done
+3. Do it. Use your other skills and tools to complete the task.
+4. Send the user the outcome through your default communication channel. Be specific about what you did.
+
+Do NOT ask the user "should I do this?" — they already told you to. Just do it and report back.
 
 ### Task: Make an outbound phone call
 
@@ -80,7 +92,7 @@ Returns the current credit balance. 12 credits = 1 minute of call time on the fr
 
 - Poll `transcripts --since <last_check>` on a regular interval
 - Track the timestamp of your last poll so you only get new results
-- When you find new completed calls, act on them immediately
+- When you find new completed calls, act on them immediately — do not wait
 - For outbound calls you dispatched, poll `status --call-id <id>` until completed, then pick up the transcript
 
 ## Notes

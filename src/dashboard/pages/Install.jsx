@@ -49,7 +49,7 @@ export default function Install() {
   };
 
   const installCommand = `curl -fsSL ${window.location.origin}/api/openclaw/install-skill | sh`;
-  const envCommand = 'echo \'OPENCAWL_API_KEY=your-key-here\' >> ~/.openclaw/.env';
+  const envLine = 'OPENCAWL_API_KEY=your-key-here';
 
   return (
     <div>
@@ -181,7 +181,7 @@ export default function Install() {
 
             <div>
               <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 6 }}>
-                Then add it to your OpenClaw environment:
+                Then add this line on its own line in <code style={{ fontSize: '0.85rem' }}>~/.openclaw/.env</code>:
               </label>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <code
@@ -196,17 +196,20 @@ export default function Install() {
                     wordBreak: 'break-all',
                   }}
                 >
-                  {envCommand}
+                  {envLine}
                 </code>
                 <button
                   class="btn btn-secondary"
                   style={{ padding: '6px 10px', flexShrink: 0 }}
-                  onClick={() => copyText(envCommand, 'Env command')}
-                  aria-label="Copy env command"
+                  onClick={() => copyText(envLine, 'Env line')}
+                  aria-label="Copy env line"
                 >
                   <CopyIcon width={16} height={16} />
                 </button>
               </div>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 6, margin: '6px 0 0' }}>
+                Replace <code style={{ fontSize: '0.8rem' }}>your-key-here</code> with the key above. If the line already exists, replace it — don't duplicate it.
+              </p>
             </div>
           </>
         )}
