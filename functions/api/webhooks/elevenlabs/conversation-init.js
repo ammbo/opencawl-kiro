@@ -276,22 +276,60 @@ export async function onRequestPost(context) {
 
     console.log(`[conversation-init] caller=${caller_id} called=${called_number} sid=${call_sid}`);
 
-    // 3. Check if the called number is a shared number
+    // 3. Detect outbound calls.
+    //    On outbound calls ElevenLabs still fires this webhook, but the
+    //    conversation_initiation_client_data was already provided in the
+    //    outbound API payload. We detect outbound by checking if caller_id
+    //    is one of OUR numbers (the agent is calling out). In that case,
+    //    return an empty passthrough so the original payload is used.
+    const callerIsOurNumber = await db
+      .prepare('SELECT 1 FROM users WHERE twilio_phone_number = ? LIMIT 1')
+      .bind(caller_id)
+      .first();
+    const callerIsDefaultNumber = caller_id === (env.TWILIO_DEFAULT_NUMBER || '');
+    const callerIsSharedPoolNumber = await db
+      .prepare('SELECT 1 FROM shared_phone_numbers WHERE phone_number = ? LIMIT 1')
+      .bind(caller_id)
+      .first();
+
+    if (callerIsOurNumber || callerIsDefaultNumber || callerIsSharedPoolNumber) {
+      // Outbound call — the agent is the caller. Return empty init data
+      // so ElevenLabs uses the conversation_initiation_client_data from
+      // the outbound API request.
+      console.log(`[conversation-init] Outbound call detected (caller is our number), passing through`);
+      return json({ type: 'conversation_initiation_client_data', dynamic_variables: {} });
+    }
+
+    // 4. Inbound call — look up who owns the called number
     const sharedRow = await db
       .prepare('SELECT phone_number FROM shared_phone_numbers WHERE phone_number = ?')
       .bind(called_number)
       .first();
     const isSharedNumber = !!sharedRow;
 
-    // 4. Look up the owner of the called number
-    const owner = await db
+    // Try to find the owner by the called number (dedicated or shared-assigned)
+    let owner = await db
       .prepare('SELECT * FROM users WHERE twilio_phone_number = ?')
       .bind(called_number)
       .first();
 
+    // If no owner found by called_number, check if the caller is a known user
+    // calling the default/shared number (owner calling in to dispatch)
     if (!owner) {
-      console.warn(`[conversation-init] No owner found for ${called_number}`);
-      // Return promo agent as fallback — the number exists in Twilio but no user owns it
+      const callerUser = await db
+        .prepare('SELECT * FROM users WHERE phone = ?')
+        .bind(caller_id)
+        .first();
+
+      if (callerUser) {
+        // The caller is a registered user calling the platform number
+        owner = callerUser;
+        console.log(`[conversation-init] Identified owner by caller phone: ${owner.id}`);
+      }
+    }
+
+    if (!owner) {
+      console.warn(`[conversation-init] No owner found for called=${called_number} caller=${caller_id}`);
       return json(handleUnknownShared(caller_id));
     }
 

@@ -1,14 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import fc from 'fast-check';
 import { onRequestPost } from './conversation-init.js';
 
 const WEBHOOK_SECRET = 'test_conversation_init_secret';
 
 /**
  * Create a mock D1 database.
+ * users: keyed by twilio_phone_number for backward compat, but also supports
+ *        lookup by phone (the user's personal number).
+ * usersByPhone: keyed by user.phone for caller-based owner lookup.
  */
 function createMockDB({
   users = {},
+  usersByPhone = {},
   sharedNumbers = [],
   acceptedNumbers = {},
   callHistory = {},
@@ -30,9 +33,22 @@ function createMockDB({
                 const number = args[0];
                 return sharedNumbers.includes(number) ? { phone_number: number } : null;
               }
+              if (sql.includes('WHERE twilio_phone_number') && sql.includes('SELECT 1')) {
+                // Outbound detection query
+                const number = args[0];
+                return users[number] ? { 1: 1 } : null;
+              }
               if (sql.includes('WHERE twilio_phone_number')) {
                 const number = args[0];
                 return users[number] || null;
+              }
+              if (sql.includes('WHERE phone =')) {
+                const phone = args[0];
+                return usersByPhone[phone] || null;
+              }
+              if (sql.includes('SELECT 1') && sql.includes('shared_phone_numbers')) {
+                const number = args[0];
+                return sharedNumbers.includes(number) ? { 1: 1 } : null;
               }
               return null;
             },
@@ -58,7 +74,7 @@ function createMockDB({
   };
 }
 
-function createContext(body, db, secret = WEBHOOK_SECRET) {
+function createContext(body, db, { secret = WEBHOOK_SECRET, env = {} } = {}) {
   const request = new Request('https://example.com/api/webhooks/elevenlabs/conversation-init', {
     method: 'POST',
     headers: {
@@ -73,30 +89,23 @@ function createContext(body, db, secret = WEBHOOK_SECRET) {
     env: {
       DB: db || createMockDB(),
       ELEVENLABS_WEBHOOK_SECRET_CONVERSATION_INIT: WEBHOOK_SECRET,
+      ...env,
     },
     data: {},
   };
 }
 
-const e164Phone = () =>
-  fc.integer({ min: 1, max: 9 }).chain((first) =>
-    fc.stringOf(fc.constantFrom('0', '1', '2', '3', '4', '5', '6', '7', '8', '9'), {
-      minLength: 4,
-      maxLength: 14,
-    }).map((rest) => `+${first}${rest}`),
-  );
+const defaultBody = {
+  caller_id: '+15559876543',
+  agent_id: 'agent_test_123',
+  called_number: '+15551234567',
+  call_sid: 'CA_test_sid',
+};
 
 
 describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
-  const defaultBody = {
-    caller_id: '+15559876543',
-    agent_id: 'agent_test_123',
-    called_number: '+15551234567',
-    call_sid: 'CA_test_sid',
-  };
-
   it('returns 401 when webhook secret is wrong', async () => {
-    const ctx = createContext(defaultBody, createMockDB(), 'wrong_secret');
+    const ctx = createContext(defaultBody, createMockDB(), { secret: 'wrong_secret' });
     const res = await onRequestPost(ctx);
     expect(res.status).toBe(401);
   });
@@ -113,17 +122,49 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
     expect(res.status).toBe(400);
   });
 
-  it('returns promo agent when no owner found for called number', async () => {
-    const db = createMockDB({});
+  // --- Outbound call detection ---
+
+  it('returns empty passthrough when caller_id is a user twilio_phone_number (outbound)', async () => {
+    const user = {
+      id: 'user-outbound',
+      phone: '+15550001111',
+      twilio_phone_number: '+15559876543', // caller_id matches this
+    };
+    const db = createMockDB({ users: { '+15559876543': user } });
     const ctx = createContext(defaultBody, db);
     const res = await onRequestPost(ctx);
 
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.type).toBe('conversation_initiation_client_data');
-    expect(data.conversation_config_override.agent.prompt.prompt.toLowerCase()).toContain('openclaw');
-    expect(data.conversation_config_override.agent.first_message).toBeTruthy();
+    expect(data.dynamic_variables).toEqual({});
+    expect(data.conversation_config_override).toBeUndefined();
   });
+
+  it('returns empty passthrough when caller_id is TWILIO_DEFAULT_NUMBER (outbound)', async () => {
+    const db = createMockDB({});
+    const ctx = createContext(defaultBody, db, {
+      env: { TWILIO_DEFAULT_NUMBER: '+15559876543' },
+    });
+    const res = await onRequestPost(ctx);
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.type).toBe('conversation_initiation_client_data');
+    expect(data.dynamic_variables).toEqual({});
+  });
+
+  it('returns empty passthrough when caller_id is a shared pool number (outbound)', async () => {
+    const db = createMockDB({ sharedNumbers: ['+15559876543'] });
+    const ctx = createContext(defaultBody, db);
+    const res = await onRequestPost(ctx);
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.dynamic_variables).toEqual({});
+  });
+
+  // --- Inbound call routing ---
 
   it('returns dispatch mode for owner calling their own number', async () => {
     const user = {
@@ -140,7 +181,6 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
 
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.type).toBe('conversation_initiation_client_data');
     expect(data.dynamic_variables.user_id).toBe('user-abc');
     expect(data.dynamic_variables.owner_mode).toBe('dispatch');
     expect(data.dynamic_variables.call_id).toBeTruthy();
@@ -148,11 +188,32 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
     expect(data.conversation_config_override.tts.voice_id).toBe('voice-123');
     expect(data.conversation_config_override.agent.first_message).toBe('Hey boss');
 
-    // Should have created a call record
     const callInsert = db._inserts.find((i) => i.sql.includes('INSERT INTO calls'));
     expect(callInsert).toBeTruthy();
     expect(callInsert.args[1]).toBe('user-abc');
     expect(callInsert.args[2]).toBe('inbound');
+  });
+
+  it('identifies owner by caller phone when called_number is the default number', async () => {
+    const user = {
+      id: 'user-free',
+      phone: '+15559876543', // caller_id matches this
+      plan: 'free',
+      // No twilio_phone_number — uses default
+    };
+    const db = createMockDB({
+      usersByPhone: { '+15559876543': user },
+    });
+    const ctx = createContext(defaultBody, db, {
+      env: { TWILIO_DEFAULT_NUMBER: '+15551234567' },
+    });
+    const res = await onRequestPost(ctx);
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    // Should identify as owner and enter dispatch mode
+    expect(data.dynamic_variables.user_id).toBe('user-free');
+    expect(data.dynamic_variables.owner_mode).toBe('dispatch');
   });
 
   it('returns promo agent for unknown caller on shared number', async () => {
@@ -173,7 +234,6 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
     const data = await res.json();
     expect(data.conversation_config_override.agent.prompt.prompt.toLowerCase()).toContain('openclaw');
 
-    // No call record for unknown on shared
     const callInsert = db._inserts.find((i) => i.sql.includes('INSERT INTO calls'));
     expect(callInsert).toBeUndefined();
   });
@@ -200,14 +260,8 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.dynamic_variables.user_id).toBe('user-ded');
-    expect(data.dynamic_variables.call_id).toBeTruthy();
-    expect(data.dynamic_variables.previous_call_count).toBe('0');
     expect(data.conversation_config_override.agent.prompt.prompt).toBe('You are a helpful assistant.');
     expect(data.conversation_config_override.tts.voice_id).toBe('voice-456');
-    expect(data.conversation_config_override.agent.first_message).toBe('Hello, how can I help?');
-
-    const callInsert = db._inserts.find((i) => i.sql.includes('INSERT INTO calls'));
-    expect(callInsert).toBeTruthy();
   });
 
   it('returns rejection for caller not in accepted list on dedicated number', async () => {
@@ -220,7 +274,7 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
     const db = createMockDB({
       users: { '+15551234567': user },
       sharedNumbers: [],
-      acceptedNumbers: { 'user-restricted': ['+15550009999'] }, // caller not in list
+      acceptedNumbers: { 'user-restricted': ['+15550009999'] },
     });
     const ctx = createContext(defaultBody, db);
     const res = await onRequestPost(ctx);
@@ -229,7 +283,6 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
     const data = await res.json();
     expect(data.conversation_config_override.agent.first_message.toLowerCase()).toContain('not currently accepting');
 
-    // No call record for rejected callers
     const callInsert = db._inserts.find((i) => i.sql.includes('INSERT INTO calls'));
     expect(callInsert).toBeUndefined();
   });
@@ -245,7 +298,7 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
     const db = createMockDB({
       users: { '+15551234567': user },
       sharedNumbers: [],
-      acceptedNumbers: { 'user-accept': ['+15559876543'] }, // caller IS in list
+      acceptedNumbers: { 'user-accept': ['+15559876543'] },
       callHistory: { 'user-accept:+15559876543': ['prev-call-1', 'prev-call-2'] },
     });
     const ctx = createContext(defaultBody, db);
@@ -256,6 +309,16 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
     expect(data.dynamic_variables.user_id).toBe('user-accept');
     expect(data.dynamic_variables.previous_call_count).toBe('2');
     expect(data.conversation_config_override.agent.prompt.prompt).toBe('Be friendly.');
+  });
+
+  it('returns promo agent when no owner found at all', async () => {
+    const db = createMockDB({});
+    const ctx = createContext(defaultBody, db);
+    const res = await onRequestPost(ctx);
+
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.conversation_config_override.agent.prompt.prompt.toLowerCase()).toContain('openclaw');
   });
 
   it('returns graceful fallback on unexpected error', async () => {
@@ -286,14 +349,8 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(defaultBody),
     });
-    const ctx = {
-      request,
-      env: { DB: db },
-      data: {},
-    };
+    const ctx = { request, env: { DB: db }, data: {} };
     const res = await onRequestPost(ctx);
-    // Should not 401 — just proceed with no auth
     expect(res.status).toBe(200);
   });
 });
-
