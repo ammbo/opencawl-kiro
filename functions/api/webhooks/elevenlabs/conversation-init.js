@@ -247,54 +247,76 @@ export async function onRequestPost(context) {
   const { env } = context;
   const db = env.DB;
 
+  console.log('[conversation-init] === WEBHOOK HIT ===');
+  console.log('[conversation-init] Method:', context.request.method);
+  console.log('[conversation-init] URL:', context.request.url);
+
+  // Log all headers for debugging
+  const headers = {};
+  for (const [key, value] of context.request.headers.entries()) {
+    headers[key] = key.toLowerCase().includes('secret') ? '***REDACTED***' : value;
+  }
+  console.log('[conversation-init] Headers:', JSON.stringify(headers));
+
   try {
-    // 1. Authenticate — ElevenLabs sends secrets you configure in the headers.
-    //    We expect a shared secret in the x-webhook-secret header.
+    // 1. Authenticate
     const webhookSecret = env.ELEVENLABS_WEBHOOK_SECRET_CONVERSATION_INIT;
+    console.log('[conversation-init] Webhook secret configured:', !!webhookSecret);
     if (webhookSecret) {
       const provided = context.request.headers.get('x-webhook-secret') || '';
+      console.log('[conversation-init] Secret header present:', !!provided);
       if (provided !== webhookSecret) {
-        console.error('[conversation-init] Invalid webhook secret');
+        console.error('[conversation-init] SECRET MISMATCH — rejecting');
         return json({ error: { code: 'UNAUTHORIZED', message: 'Invalid webhook secret' } }, 401);
       }
+      console.log('[conversation-init] Secret validated OK');
+    } else {
+      console.log('[conversation-init] No secret configured — skipping auth');
     }
 
     // 2. Parse the request body
     let body;
     try {
       body = await context.request.json();
-    } catch {
+    } catch (parseErr) {
+      console.error('[conversation-init] JSON parse failed:', parseErr.message);
       return json({ error: { code: 'BAD_REQUEST', message: 'Invalid JSON body' } }, 400);
     }
+
+    console.log('[conversation-init] Request body:', JSON.stringify(body));
 
     const { caller_id, agent_id, called_number, call_sid } = body;
 
     if (!caller_id || !called_number) {
-      console.error('[conversation-init] Missing caller_id or called_number', body);
+      console.error('[conversation-init] Missing required fields. caller_id:', caller_id, 'called_number:', called_number);
       return json({ error: { code: 'BAD_REQUEST', message: 'Missing required fields' } }, 400);
     }
 
-    console.log(`[conversation-init] caller=${caller_id} called=${called_number} sid=${call_sid}`);
+    console.log(`[conversation-init] caller=${caller_id} called=${called_number} agent=${agent_id} sid=${call_sid}`);
 
-    // 3. Detect outbound calls.
-    //    On outbound calls, caller_id is OUR number (the agent calling out)
-    //    and called_number is the destination. The webhook response REPLACES
-    //    the conversation_initiation_client_data from the API payload, so we
-    //    must reconstruct the full data from the pending call record.
+    // 3. Detect outbound calls
     const callerIsOurNumber = await db
       .prepare('SELECT id FROM users WHERE twilio_phone_number = ? LIMIT 1')
       .bind(caller_id)
       .first();
-    const callerIsDefaultNumber = caller_id === (env.TWILIO_DEFAULT_NUMBER || '');
+    console.log('[conversation-init] callerIsOurNumber:', JSON.stringify(callerIsOurNumber));
+
+    const defaultNum = env.TWILIO_DEFAULT_NUMBER || '';
+    const callerIsDefaultNumber = caller_id === defaultNum;
+    console.log('[conversation-init] TWILIO_DEFAULT_NUMBER:', defaultNum, 'callerIsDefaultNumber:', callerIsDefaultNumber);
+
     const callerIsSharedPoolNumber = await db
       .prepare('SELECT 1 FROM shared_phone_numbers WHERE phone_number = ? LIMIT 1')
       .bind(caller_id)
       .first();
+    console.log('[conversation-init] callerIsSharedPoolNumber:', JSON.stringify(callerIsSharedPoolNumber));
 
-    if (callerIsOurNumber || callerIsDefaultNumber || callerIsSharedPoolNumber) {
-      console.log(`[conversation-init] Outbound call detected (caller is our number)`);
+    const isOutbound = !!(callerIsOurNumber || callerIsDefaultNumber || callerIsSharedPoolNumber);
+    console.log('[conversation-init] isOutbound:', isOutbound);
 
-      // Find the most recent pending outbound call to this destination
+    if (isOutbound) {
+      console.log('[conversation-init] === OUTBOUND CALL PATH ===');
+
       const callRecord = await db
         .prepare(
           "SELECT c.*, u.voice_id AS user_voice_id, u.system_prompt AS user_system_prompt, u.first_message AS user_first_message FROM calls c JOIN users u ON c.user_id = u.id WHERE c.destination_phone = ? AND c.direction = 'outbound' AND c.status = 'pending' ORDER BY c.created_at DESC LIMIT 1",
@@ -302,107 +324,102 @@ export async function onRequestPost(context) {
         .bind(called_number)
         .first();
 
+      console.log('[conversation-init] Outbound call record:', callRecord ? JSON.stringify({
+        id: callRecord.id,
+        user_id: callRecord.user_id,
+        goal: callRecord.goal,
+        has_override_prompt: !!callRecord.override_system_prompt,
+        has_override_voice: !!callRecord.override_voice_id,
+        has_user_prompt: !!callRecord.user_system_prompt,
+        has_user_voice: !!callRecord.user_voice_id,
+      }) : 'NULL — no pending call found');
+
       if (callRecord) {
         const dynamicVars = {
           user_id: callRecord.user_id,
           call_id: callRecord.id,
         };
-        if (callRecord.goal) {
-          dynamicVars.message = callRecord.goal;
-        }
+        if (callRecord.goal) dynamicVars.message = callRecord.goal;
 
         const overrides = {};
+        if (callRecord.override_system_prompt) overrides.prompt = callRecord.override_system_prompt;
+        else if (callRecord.user_system_prompt) overrides.prompt = callRecord.user_system_prompt;
 
-        // Per-call overrides take priority, then user defaults
-        if (callRecord.override_system_prompt) {
-          overrides.prompt = callRecord.override_system_prompt;
-        } else if (callRecord.user_system_prompt) {
-          overrides.prompt = callRecord.user_system_prompt;
-        }
+        if (callRecord.override_voice_id) overrides.voice_id = callRecord.override_voice_id;
+        else if (callRecord.user_voice_id) overrides.voice_id = callRecord.user_voice_id;
 
-        if (callRecord.override_voice_id) {
-          overrides.voice_id = callRecord.override_voice_id;
-        } else if (callRecord.user_voice_id) {
-          overrides.voice_id = callRecord.user_voice_id;
-        }
+        if (callRecord.override_first_message) overrides.first_message = callRecord.override_first_message;
+        else if (callRecord.user_first_message) overrides.first_message = callRecord.user_first_message;
 
-        if (callRecord.override_first_message) {
-          overrides.first_message = callRecord.override_first_message;
-        } else if (callRecord.user_first_message) {
-          overrides.first_message = callRecord.user_first_message;
-        }
-
-        console.log(`[conversation-init] Outbound: returning data for call=${callRecord.id} user=${callRecord.user_id}`);
-        return json(buildInitResponse(dynamicVars, overrides));
+        const resp = buildInitResponse(dynamicVars, overrides);
+        console.log('[conversation-init] Outbound response:', JSON.stringify(resp));
+        return json(resp);
       }
 
-      // No matching call record — return minimal passthrough
-      console.warn(`[conversation-init] Outbound: no pending call found for destination=${called_number}`);
+      console.warn('[conversation-init] No pending outbound call found — returning empty passthrough');
       return json({ type: 'conversation_initiation_client_data', dynamic_variables: {} });
     }
 
-    // 4. Inbound call — look up who owns the called number
+    // 4. Inbound call
+    console.log('[conversation-init] === INBOUND CALL PATH ===');
+
     const sharedRow = await db
       .prepare('SELECT phone_number FROM shared_phone_numbers WHERE phone_number = ?')
       .bind(called_number)
       .first();
     const isSharedNumber = !!sharedRow;
+    console.log('[conversation-init] called_number is shared:', isSharedNumber);
 
-    // Try to find the owner by the called number (dedicated or shared-assigned)
     let owner = await db
       .prepare('SELECT * FROM users WHERE twilio_phone_number = ?')
       .bind(called_number)
       .first();
+    console.log('[conversation-init] Owner by twilio_phone_number:', owner ? `id=${owner.id} phone=${owner.phone}` : 'NOT FOUND');
 
-    // If no owner found by called_number, check if the caller is a known user
-    // calling the default/shared number (owner calling in to dispatch)
     if (!owner) {
+      console.log('[conversation-init] Trying caller-based lookup for caller_id:', caller_id);
       const callerUser = await db
         .prepare('SELECT * FROM users WHERE phone = ?')
         .bind(caller_id)
         .first();
+      console.log('[conversation-init] Caller user lookup:', callerUser ? `id=${callerUser.id}` : 'NOT FOUND');
 
       if (callerUser) {
-        // The caller is a registered user calling the platform number
         owner = callerUser;
-        console.log(`[conversation-init] Identified owner by caller phone: ${owner.id}`);
+        console.log('[conversation-init] Identified owner by caller phone:', owner.id);
       }
     }
 
     if (!owner) {
-      console.warn(`[conversation-init] No owner found for called=${called_number} caller=${caller_id}`);
-      return json(handleUnknownShared(caller_id));
+      console.warn('[conversation-init] NO OWNER FOUND — returning promo agent');
+      const resp = handleUnknownShared(caller_id);
+      console.log('[conversation-init] Promo response:', JSON.stringify(resp));
+      return json(resp);
     }
 
-    // 5. Classify the caller
     const classification = classifyCaller(caller_id, owner, isSharedNumber);
+    console.log(`[conversation-init] classification=${classification} owner.id=${owner.id} owner.phone=${owner.phone}`);
 
-    console.log(`[conversation-init] classification=${classification} owner=${owner.id}`);
-
-    // 6. Route based on classification
     let response;
-
     switch (classification) {
       case 'owner':
         response = await handleOwner(db, owner, caller_id);
         break;
-
       case 'unknown_shared':
         response = handleUnknownShared(caller_id);
         break;
-
       case 'unknown_dedicated':
         response = await handleUnknownDedicated(db, owner, caller_id);
         break;
-
       default:
         response = handleUnknownShared(caller_id);
     }
 
+    console.log('[conversation-init] Final response:', JSON.stringify(response));
     return json(response);
   } catch (err) {
-    console.error('[conversation-init] Error:', err.message || err, err.stack);
-    // Return a safe fallback so the call doesn't just die
+    console.error('[conversation-init] UNCAUGHT ERROR:', err.message || err);
+    console.error('[conversation-init] Stack:', err.stack);
     return json(
       buildInitResponse(
         { caller: 'unknown' },

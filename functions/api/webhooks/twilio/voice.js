@@ -20,9 +20,6 @@ function twimlResponse(twiml, status = 200) {
   });
 }
 
-/**
- * Parses a URL-encoded form body into a key-value object.
- */
 function parseFormBody(body) {
   const params = {};
   if (!body) return params;
@@ -36,30 +33,55 @@ function parseFormBody(body) {
   return params;
 }
 
+function escapeXml(str) {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 export async function onRequestPost(context) {
   const { env } = context;
 
   try {
-    // 1. Parse form-encoded body
     const rawBody = await context.request.text();
     const params = parseFormBody(rawBody);
 
-    // 2. Validate Twilio signature
+    console.log('[twilio-voice] === INBOUND CALL ===');
+    console.log('[twilio-voice] Called:', params.Called);
+    console.log('[twilio-voice] From:', params.From);
+    console.log('[twilio-voice] CallSid:', params.CallSid);
+    console.log('[twilio-voice] Direction:', params.Direction);
+    console.log('[twilio-voice] URL:', context.request.url);
+
     const signature = context.request.headers.get('X-Twilio-Signature') || '';
     const url = context.request.url;
 
     const isValid = await verifyTwilioSignature(url, params, signature, env.TWILIO_AUTH_TOKEN);
     if (!isValid) {
+      console.error('[twilio-voice] SIGNATURE VALIDATION FAILED');
+      console.error('[twilio-voice] Signature header:', signature ? 'present' : 'MISSING');
       return twimlResponse(
         '<?xml version="1.0" encoding="UTF-8"?><Response><Say>Request validation failed.</Say></Response>',
         403,
       );
     }
 
-    // 3. Return TwiML that connects to ElevenLabs agent.
-    //    ElevenLabs will call our conversation-init webhook to get
-    //    dynamic variables and config overrides for this specific caller.
+    console.log('[twilio-voice] Signature valid');
+
     const agentId = env.ELEVENLABS_AGENT_ID;
+    if (!agentId) {
+      console.error('[twilio-voice] ELEVENLABS_AGENT_ID is not set!');
+      return twimlResponse(
+        '<?xml version="1.0" encoding="UTF-8"?><Response><Say>System configuration error.</Say></Response>',
+        500,
+      );
+    }
+
+    console.log('[twilio-voice] Agent ID:', agentId);
 
     const twiml = [
       '<?xml version="1.0" encoding="UTF-8"?>',
@@ -71,25 +93,15 @@ export async function onRequestPost(context) {
       '</Response>',
     ].join('\n');
 
+    console.log('[twilio-voice] Returning TwiML with Stream to ElevenLabs');
+    console.log('[twilio-voice] TwiML:', twiml);
+
     return twimlResponse(twiml);
   } catch (err) {
-    console.error('[twilio-voice-webhook] Error:', err.message || err);
+    console.error('[twilio-voice] UNCAUGHT ERROR:', err.message || err, err.stack);
     return twimlResponse(
       '<?xml version="1.0" encoding="UTF-8"?><Response><Say>An error occurred. Please try again later.</Say></Response>',
       500,
     );
   }
-}
-
-/**
- * Escapes a string for safe inclusion in XML.
- */
-function escapeXml(str) {
-  if (typeof str !== 'string') return '';
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
 }
