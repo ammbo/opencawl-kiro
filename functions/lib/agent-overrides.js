@@ -39,17 +39,17 @@ export function validateOverrideFields({ system_prompt, first_message } = {}) {
  * Falls back to user.voice_id when no voice_id override is provided.
  *
  * @param {string} agentId - ElevenLabs agent ID
- * @param {string} fromNumber - The agent phone number ID to call from
+ * @param {string} phoneNumberId - The ElevenLabs phone number resource ID (not the E.164 number)
  * @param {string} destinationPhone - The destination phone number (E.164)
  * @param {{ id: string, voice_id?: string }} user - The user record
  * @param {{ system_prompt?: string, voice_id?: string, first_message?: string }} overrides - Per-call overrides
  * @param {string} [message] - Optional legacy message for dynamic variables
  * @returns {object} The ElevenLabs API payload
  */
-export function buildElevenLabsPayload(agentId, fromNumber, destinationPhone, user, overrides = {}, message) {
+export function buildElevenLabsPayload(agentId, phoneNumberId, destinationPhone, user, overrides = {}, message) {
   const payload = {
     agent_id: agentId,
-    agent_phone_number_id: fromNumber,
+    agent_phone_number_id: phoneNumberId,
     to_number: destinationPhone,
   };
 

@@ -91,7 +91,7 @@ export async function onRequestPost(context) {
     // 4. Invoke ElevenLabs outbound call
     const agentId = context.env.ELEVENLABS_AGENT_ID;
     const elevenLabsKey = context.env.ELEVENLABS_API_KEY;
-    const fromNumber = user.twilio_phone_number || context.env.TWILIO_DEFAULT_NUMBER;
+    const fromNumber = user.elevenlabs_phone_number_id || context.env.ELEVENLABS_PHONE_NUMBER_ID;
 
     const overrides = {};
     if (system_prompt) overrides.system_prompt = system_prompt;

@@ -141,7 +141,7 @@ export async function onRequestPost(context) {
     // Initiate ElevenLabs outbound call
     const agentId = env.ELEVENLABS_AGENT_ID;
     const elevenLabsKey = env.ELEVENLABS_API_KEY;
-    const fromNumber = owner.twilio_phone_number || env.TWILIO_DEFAULT_NUMBER;
+    const fromNumber = owner.elevenlabs_phone_number_id || env.ELEVENLABS_PHONE_NUMBER_ID;
 
     const overrides = {};
     if (goal) {

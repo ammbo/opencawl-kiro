@@ -108,6 +108,7 @@ export async function onRequestPost(context) {
   }
 
   // Step 2: Import number into ElevenLabs
+  let elevenlabsPhoneNumberId = null;
   try {
     const elRes = await fetch(
       'https://api.elevenlabs.io/v1/convai/phone-numbers/create',
@@ -128,20 +129,25 @@ export async function onRequestPost(context) {
       },
     );
 
-    if (!elRes.ok) {
+    if (elRes.ok) {
+      const elData = await elRes.json();
+      elevenlabsPhoneNumberId = elData.phone_number_id || null;
+    } else {
       // ElevenLabs import failed — number is bought but not linked.
       // We still save it so the user has the number; ElevenLabs can be retried.
+      console.error('[provision] ElevenLabs import failed:', elRes.status, await elRes.text().catch(() => ''));
     }
-  } catch {
+  } catch (err) {
     // Non-fatal: number is provisioned in Twilio, ElevenLabs link can be retried
+    console.error('[provision] ElevenLabs import error:', err.message || err);
   }
 
   // Step 3: Update user record
   try {
     const now = new Date().toISOString();
     await db
-      .prepare('UPDATE users SET twilio_phone_number = ?, updated_at = ? WHERE id = ?')
-      .bind(twilioNumber, now, user.id)
+      .prepare('UPDATE users SET twilio_phone_number = ?, elevenlabs_phone_number_id = ?, updated_at = ? WHERE id = ?')
+      .bind(twilioNumber, elevenlabsPhoneNumberId, now, user.id)
       .run();
   } catch (err) {
     return json(
