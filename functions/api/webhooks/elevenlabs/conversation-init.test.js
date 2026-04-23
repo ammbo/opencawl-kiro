@@ -290,7 +290,7 @@ describe('POST /api/webhooks/elevenlabs/conversation-init', () => {
     const res = await onRequestPost(ctx);
 
     const data = await res.json();
-    expect(data.conversation_config_override.agent.prompt.prompt.toLowerCase()).toContain('openclaw');
+    expect(data.conversation_config_override.agent.prompt.prompt.toLowerCase()).toContain('opencawl');
   });
 
   it('returns owner agent config for open-access dedicated number', async () => {

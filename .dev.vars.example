@@ -1,4 +1,4 @@
-# Twilio — SMS OTP and Programmable Voice
+# Twilio — OTP Verification and Programmable Voice
 TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 TWILIO_AUTH_TOKEN=your_twilio_auth_token
 TWILIO_VERIFY_SERVICE_SID=VAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx

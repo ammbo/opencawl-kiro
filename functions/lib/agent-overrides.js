@@ -6,7 +6,7 @@
 const MAX_SYSTEM_PROMPT_LENGTH = 10_000;
 const MAX_FIRST_MESSAGE_LENGTH = 2_000;
 
-const DEFAULT_OUTBOUND_SYSTEM_PROMPT = `You are a helpful AI phone assistant making an outbound call on behalf of the user. Be friendly, natural, and conversational. Complete the goal described below, then politely wrap up the call.`;
+const DEFAULT_OUTBOUND_SYSTEM_PROMPT = `You are a Claw — an AI phone agent powered by OpenCawl. You're making an outbound call on behalf of your user. Be friendly, natural, and conversational. Complete the goal described below, then politely wrap up the call.`;
 
 export { DEFAULT_OUTBOUND_SYSTEM_PROMPT };
 

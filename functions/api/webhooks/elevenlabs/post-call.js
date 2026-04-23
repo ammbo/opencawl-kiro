@@ -1,49 +1,52 @@
 /**
  * POST /api/webhooks/elevenlabs/post-call
  * Handles ElevenLabs post_call_transcription webhook.
- * Verifies HMAC-SHA256 signature, logs transcript, updates call record,
- * and handles billing: credit deduction for free users, metered usage for paid.
+ * Verifies HMAC-SHA256 signature, logs transcript, generates a summary,
+ * updates call record, and handles billing.
+ *
+ * The summary is stored on the call record so the user's OpenClaw agent
+ * can pick it up when it polls GET /api/openclaw/transcripts.
  */
 
 import { verifyElevenLabsSignature } from '../../../lib/webhooks.js';
 import { calculateCreditCost, deduct, recordPaidUsage } from '../../../lib/credits.js';
-import { sendSms } from '../../../lib/sms.js';
 
 /**
- * Generate a post-call SMS summary from the transcript.
- * Format: "OpenCawl: Called {destination}. {outcome}" (≤160 chars)
- * If no transcript, returns a fallback message.
+ * Generate a concise summary from a call transcript.
+ * Extracts the key outcome — what happened and what was decided.
+ *
+ * @param {string} direction - 'inbound' or 'outbound'
+ * @param {string|null} destination - the other party's phone number
+ * @param {Array<{role: string, message: string}>|null} transcript
+ * @param {string|null} goal - the original call goal if any
+ * @returns {string}
  */
-export function generateCallSummary(destination, transcript) {
-  const prefix = `OpenCawl: Called ${destination}.`;
+export function generateCallSummary(direction, destination, transcript, goal) {
+  const target = destination || 'unknown number';
 
   if (!transcript || !Array.isArray(transcript) || transcript.length === 0) {
-    return `OpenCawl: Call to ${destination} completed. No transcript available.`;
+    return `Call ${direction === 'outbound' ? 'to' : 'from'} ${target} completed. No transcript available.`;
   }
 
-  // Find the last agent message as the outcome
-  let outcome = '';
-  for (let i = transcript.length - 1; i >= 0; i--) {
-    if (transcript[i].role === 'agent' && transcript[i].message) {
-      outcome = transcript[i].message;
-      break;
-    }
+  // Collect the last few agent messages to capture the outcome
+  const agentMessages = transcript
+    .filter((t) => t.role === 'agent' && t.message)
+    .map((t) => t.message);
+
+  if (agentMessages.length === 0) {
+    return `Call ${direction === 'outbound' ? 'to' : 'from'} ${target} completed. No agent messages in transcript.`;
   }
 
-  if (!outcome) {
-    return `OpenCawl: Call to ${destination} completed. No transcript available.`;
-  }
+  // Use the last agent message as the primary outcome
+  const outcome = agentMessages[agentMessages.length - 1];
 
-  // "OpenCawl: Called {destination}. {outcome}" must be ≤160 chars
-  // prefix already includes the trailing period, add space before outcome
-  const full = `${prefix} ${outcome}`;
-  if (full.length <= 160) {
-    return full;
+  const parts = [];
+  if (goal) {
+    parts.push(`Goal: ${goal}`);
   }
+  parts.push(`Outcome: ${outcome}`);
 
-  // Truncate outcome to fit: prefix + space + outcome + "…" ≤ 160
-  const maxOutcome = 160 - prefix.length - 1 - 1; // 1 for space, 1 for ellipsis
-  return `${prefix} ${outcome.slice(0, maxOutcome)}…`;
+  return parts.join(' | ');
 }
 
 function json(body, status = 200) {
@@ -94,19 +97,33 @@ export async function onRequestPost(context) {
       return json({ received: true });
     }
 
-    // 3. Update call record
+    // 3. Look up the call record to get direction, destination, goal
+    const callRecord = await db
+      .prepare('SELECT direction, destination_phone, goal FROM calls WHERE id = ?')
+      .bind(resolvedCallId)
+      .first();
+
+    // 4. Generate summary from transcript
+    const summary = generateCallSummary(
+      callRecord?.direction || 'outbound',
+      callRecord?.destination_phone || null,
+      transcript,
+      callRecord?.goal || null,
+    );
+
+    // 5. Update call record with transcript, summary, and status
     const now = new Date().toISOString();
     const transcriptJson = transcript ? JSON.stringify(transcript) : null;
     const durationSeconds = callDurationSecs || 0;
 
     await db
       .prepare(
-        'UPDATE calls SET status = ?, duration_seconds = ?, transcript = ?, elevenlabs_conversation_id = ?, updated_at = ? WHERE id = ?'
+        'UPDATE calls SET status = ?, duration_seconds = ?, transcript = ?, summary = ?, elevenlabs_conversation_id = ?, updated_at = ? WHERE id = ?'
       )
-      .bind('completed', durationSeconds, transcriptJson, conversation_id || null, now, resolvedCallId)
+      .bind('completed', durationSeconds, transcriptJson, summary, conversation_id || null, now, resolvedCallId)
       .run();
 
-    // 4. Bill the user
+    // 6. Bill the user
     if (durationSeconds > 0) {
       const durationMinutes = durationSeconds / 60;
 
@@ -121,27 +138,6 @@ export async function onRequestPost(context) {
           await deduct(db, resolvedUserId, cost, 'call', resolvedCallId);
         } else {
           await recordPaidUsage(db, user, durationMinutes, resolvedCallId, env);
-        }
-
-        // 5. Send post-call SMS notification (non-blocking)
-        if (user.phone && user.twilio_phone_number) {
-          try {
-            // Get destination_phone from the call record
-            const callRecord = await db
-              .prepare('SELECT destination_phone FROM calls WHERE id = ?')
-              .bind(resolvedCallId)
-              .first();
-
-            const destination = callRecord?.destination_phone || 'unknown';
-            const summary = generateCallSummary(destination, transcript);
-
-            const smsResult = await sendSms(env, user.twilio_phone_number, user.phone, summary);
-            if (!smsResult.success) {
-              console.error('[elevenlabs-post-call] SMS notification failed for call', resolvedCallId);
-            }
-          } catch (smsErr) {
-            console.error('[elevenlabs-post-call] SMS notification error:', smsErr.message || smsErr);
-          }
         }
       }
     }

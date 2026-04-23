@@ -48,6 +48,7 @@ export default function CallLog({ calls }) {
             <th>Direction</th>
             <th>Phone</th>
             <th>Status</th>
+            <th>Summary</th>
             <th>Duration</th>
             <th>Date</th>
           </tr>
@@ -68,6 +69,9 @@ export default function CallLog({ calls }) {
                 >
                   {call.status}
                 </span>
+              </td>
+              <td class="calllog-summary">
+                {call.summary || '—'}
               </td>
               <td>{formatDuration(call.duration_seconds)}</td>
               <td>{formatDate(call.created_at)}</td>

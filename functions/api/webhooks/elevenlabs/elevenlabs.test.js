@@ -45,7 +45,7 @@ function createMockDB(options = {}) {
               queries.push({ sql, args });
               if (sql.includes('SELECT * FROM users') && user) return user;
               if (sql.includes('SELECT credits_balance')) return { credits_balance: user?.credits_balance || 500 };
-              if (sql.includes('SELECT destination_phone') && callRecord) return callRecord;
+              if (sql.includes('SELECT direction')) return callRecord || { direction: 'outbound', destination_phone: '+15551234567', goal: null };
               return null;
             },
             async all() {
@@ -141,8 +141,9 @@ describe('POST /api/webhooks/elevenlabs/post-call', () => {
     expect(res.status).toBe(401);
   });
 
-  it('updates call record for valid post-call webhook', async () => {
-    const db = createMockDB({ user: { id: 'user-abc', plan: 'free', credits_balance: 500 } });
+  it('updates call record with transcript and summary for valid post-call webhook', async () => {
+    const callRecord = { direction: 'outbound', destination_phone: '+15551234567', goal: 'Reschedule appointment' };
+    const db = createMockDB({ user: { id: 'user-abc', plan: 'free', credits_balance: 500 }, callRecord });
     const ctx = await createPostCallContext(validBody, { DB: db });
     const res = await postCallHandler(ctx);
 
@@ -153,6 +154,9 @@ describe('POST /api/webhooks/elevenlabs/post-call', () => {
     const updateQuery = db._queries.find((q) => q.sql.includes('UPDATE calls'));
     expect(updateQuery).toBeTruthy();
     expect(updateQuery.args[0]).toBe('completed');
+    // summary should be in the args (index 3)
+    expect(typeof updateQuery.args[3]).toBe('string');
+    expect(updateQuery.args[3].length).toBeGreaterThan(0);
   });
 
   it('returns 200 even on internal errors to avoid retry storms', async () => {
@@ -322,185 +326,44 @@ describe('POST /api/webhooks/elevenlabs/tools', () => {
 
 
 describe('generateCallSummary', () => {
-  it('returns summary with destination and last agent message when transcript exists', () => {
+  it('returns summary with outcome from last agent message', () => {
     const transcript = [
       { role: 'agent', message: 'Hello, how can I help?' },
       { role: 'user', message: 'Reschedule my appointment.' },
       { role: 'agent', message: 'Your appointment has been rescheduled to Friday.' },
     ];
-    const result = generateCallSummary('+15551234567', transcript);
-    expect(result).toContain('+15551234567');
+    const result = generateCallSummary('outbound', '+15551234567', transcript, null);
     expect(result).toContain('rescheduled to Friday');
-    expect(result.length).toBeLessThanOrEqual(160);
+  });
+
+  it('includes goal in summary when provided', () => {
+    const transcript = [
+      { role: 'agent', message: 'Done, your appointment is moved.' },
+    ];
+    const result = generateCallSummary('outbound', '+15551234567', transcript, 'Reschedule dentist');
+    expect(result).toContain('Goal: Reschedule dentist');
+    expect(result).toContain('Outcome:');
   });
 
   it('returns fallback message when transcript is empty', () => {
-    const result = generateCallSummary('+15551234567', []);
-    expect(result).toBe('OpenCawl: Call to +15551234567 completed. No transcript available.');
+    const result = generateCallSummary('outbound', '+15551234567', [], null);
+    expect(result).toContain('+15551234567');
+    expect(result).toContain('No transcript available');
   });
 
   it('returns fallback message when transcript is null', () => {
-    const result = generateCallSummary('+15551234567', null);
-    expect(result).toBe('OpenCawl: Call to +15551234567 completed. No transcript available.');
+    const result = generateCallSummary('inbound', '+15551234567', null, null);
+    expect(result).toContain('from');
+    expect(result).toContain('No transcript available');
   });
 
-  it('truncates long transcript to fit within 160 chars', () => {
-    const longMessage = 'A'.repeat(200);
-    const transcript = [
-      { role: 'agent', message: longMessage },
-    ];
-    const result = generateCallSummary('+15551234567', transcript);
-    expect(result.length).toBeLessThanOrEqual(160);
-    expect(result).toContain('…');
-  });
-});
-
-describe('Post-call SMS notification', () => {
-  let originalFetch;
-
-  beforeEach(() => {
-    originalFetch = globalThis.fetch;
+  it('handles inbound direction correctly', () => {
+    const result = generateCallSummary('inbound', '+15551234567', [], null);
+    expect(result).toContain('from +15551234567');
   });
 
-  afterEach(() => {
-    globalThis.fetch = originalFetch;
-  });
-
-  function makePostCallBody({ transcript, durationSecs = 125 } = {}) {
-    return {
-      type: 'post_call_transcription',
-      event_timestamp: Math.floor(Date.now() / 1000),
-      data: {
-        conversation_id: 'conv-sms-test',
-        transcript,
-        metadata: {
-          call_duration_secs: durationSecs,
-        },
-        conversation_initiation_client_data: {
-          dynamic_variables: {
-            user_id: 'user-sms',
-            call_id: 'call-sms',
-          },
-        },
-      },
-    };
-  }
-
-  const smsUser = {
-    id: 'user-sms',
-    plan: 'free',
-    credits_balance: 500,
-    phone: '+15559998888',
-    twilio_phone_number: '+15550001111',
-  };
-
-  it('sends SMS with summary ≤160 chars for completed call with transcript', async () => {
-    // Mock fetch: first call is for Twilio SMS API
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 201 }));
-
-    const transcript = [
-      { role: 'agent', message: 'Hi there!' },
-      { role: 'user', message: 'Please confirm my booking.' },
-      { role: 'agent', message: 'Your booking is confirmed for Tuesday.' },
-    ];
-    const body = makePostCallBody({ transcript });
-    const db = createMockDB({
-      user: smsUser,
-      callRecord: { destination_phone: '+15551234567' },
-    });
-    const ctx = await createPostCallContext(body, {
-      DB: db,
-      TWILIO_ACCOUNT_SID: 'AC_test',
-      TWILIO_AUTH_TOKEN: 'token_test',
-    });
-
-    const res = await postCallHandler(ctx);
-    expect(res.status).toBe(200);
-
-    // Verify fetch was called for Twilio SMS
-    expect(globalThis.fetch).toHaveBeenCalled();
-    const smsCall = globalThis.fetch.mock.calls.find(([url]) =>
-      typeof url === 'string' && url.includes('twilio.com')
-    );
-    expect(smsCall).toBeTruthy();
-
-    // Verify the SMS body is ≤160 chars
-    const smsBody = smsCall[1].body;
-    const params = new URLSearchParams(smsBody);
-    expect(params.get('Body').length).toBeLessThanOrEqual(160);
-    expect(params.get('From')).toBe('+15550001111');
-    expect(params.get('To')).toBe('+15559998888');
-  });
-
-  it('sends SMS with "no transcript" message when transcript is missing', async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response('{}', { status: 201 }));
-
-    const body = makePostCallBody({ transcript: undefined });
-    const db = createMockDB({
-      user: smsUser,
-      callRecord: { destination_phone: '+15551234567' },
-    });
-    const ctx = await createPostCallContext(body, {
-      DB: db,
-      TWILIO_ACCOUNT_SID: 'AC_test',
-      TWILIO_AUTH_TOKEN: 'token_test',
-    });
-
-    const res = await postCallHandler(ctx);
-    expect(res.status).toBe(200);
-
-    const smsCall = globalThis.fetch.mock.calls.find(([url]) =>
-      typeof url === 'string' && url.includes('twilio.com')
-    );
-    expect(smsCall).toBeTruthy();
-    const params = new URLSearchParams(smsCall[1].body);
-    expect(params.get('Body')).toContain('No transcript available');
-  });
-
-  it('returns 200 even when SMS send fails', async () => {
-    // Mock fetch to reject for Twilio SMS
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response('error', { status: 500 }));
-
-    const transcript = [{ role: 'agent', message: 'Done.' }];
-    const body = makePostCallBody({ transcript });
-    const db = createMockDB({
-      user: smsUser,
-      callRecord: { destination_phone: '+15551234567' },
-    });
-    const ctx = await createPostCallContext(body, {
-      DB: db,
-      TWILIO_ACCOUNT_SID: 'AC_test',
-      TWILIO_AUTH_TOKEN: 'token_test',
-    });
-
-    const res = await postCallHandler(ctx);
-    expect(res.status).toBe(200);
-    const data = await res.json();
-    expect(data.received).toBe(true);
-  });
-
-  it('does not send SMS when call duration is zero', async () => {
-    globalThis.fetch = vi.fn();
-
-    const transcript = [{ role: 'agent', message: 'Hello' }];
-    const body = makePostCallBody({ transcript, durationSecs: 0 });
-    const db = createMockDB({
-      user: smsUser,
-      callRecord: { destination_phone: '+15551234567' },
-    });
-    const ctx = await createPostCallContext(body, {
-      DB: db,
-      TWILIO_ACCOUNT_SID: 'AC_test',
-      TWILIO_AUTH_TOKEN: 'token_test',
-    });
-
-    const res = await postCallHandler(ctx);
-    expect(res.status).toBe(200);
-
-    // fetch should NOT have been called for Twilio SMS (no billing, no SMS)
-    const smsCall = globalThis.fetch.mock.calls.find(([url]) =>
-      typeof url === 'string' && url.includes('twilio.com')
-    );
-    expect(smsCall).toBeUndefined();
+  it('handles outbound direction correctly', () => {
+    const result = generateCallSummary('outbound', '+15551234567', [], null);
+    expect(result).toContain('to +15551234567');
   });
 });
