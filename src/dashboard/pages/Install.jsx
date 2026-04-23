@@ -91,6 +91,60 @@ export default function Install() {
         <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', margin: 0 }}>
           This installs the SKILL.md and CLI script into your OpenClaw skills directory.
         </p>
+
+        <details style={{ marginTop: 16 }}>
+          <summary style={{ cursor: 'pointer', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+            Install manually
+          </summary>
+          <div style={{ marginTop: 12, fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+            <p style={{ margin: '0 0 8px' }}>
+              Download these two files into your OpenClaw skills directory:
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+              {[
+                { label: 'SKILL.md', path: '/opencawl/SKILL.md' },
+                { label: 'scripts/opencawl.mjs', path: '/opencawl/scripts/opencawl.mjs' },
+              ].map((file) => (
+                <div key={file.path} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <code
+                    style={{
+                      flex: 1,
+                      background: 'var(--bg)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '6px 10px',
+                      fontSize: '0.8rem',
+                      fontFamily: 'monospace',
+                      wordBreak: 'break-all',
+                    }}
+                  >
+                    {file.label}
+                  </code>
+                  <a
+                    href={file.path}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="btn btn-secondary"
+                    style={{ padding: '4px 10px', fontSize: '0.8rem', textDecoration: 'none', flexShrink: 0 }}
+                  >
+                    View
+                  </a>
+                  <button
+                    class="btn btn-secondary"
+                    style={{ padding: '4px 10px', flexShrink: 0 }}
+                    onClick={() => copyText(`${window.location.origin}${file.path}`, file.label)}
+                    aria-label={`Copy ${file.label} URL`}
+                  >
+                    <CopyIcon width={14} height={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p style={{ margin: 0 }}>
+              Place them in <code style={{ fontSize: '0.8rem' }}>~/.openclaw/workspace/skills/opencawl/</code>
+            </p>
+          </div>
+        </details>
       </div>
 
       {/* Section 2: API Key */}

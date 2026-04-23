@@ -1241,7 +1241,7 @@ ul { list-style: none; }
 
 /* ── Call Detail ──────────────────────────────── */
 .calldetail-panel {
-  background: var(--bg-card);
+  background: var(--bg-sidebar, #111111);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0;
@@ -1261,7 +1261,7 @@ ul { list-style: none; }
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
-  background: var(--bg-card);
+  background: var(--bg-sidebar, #111111);
   z-index: 1;
 }
 
