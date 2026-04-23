@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import fc from 'fast-check';
-import { buildElevenLabsPayload, validateOverrideFields } from './agent-overrides.js';
+import { buildElevenLabsPayload, validateOverrideFields, DEFAULT_OUTBOUND_SYSTEM_PROMPT } from './agent-overrides.js';
 
 /**
  * Property 1: Outbound override payload construction
@@ -37,15 +37,16 @@ describe('Property 1: Outbound override payload construction', () => {
 
           const configOverride = payload.conversation_initiation_client_data.conversation_config_override;
 
-          // system_prompt mapping
+          // A system prompt is ALWAYS present — we never let the ElevenLabs default through.
+          // Priority: per-call override > user's stored prompt > DEFAULT_OUTBOUND_SYSTEM_PROMPT
+          expect(configOverride).toBeDefined();
+          expect(configOverride.agent.prompt.prompt).toBeDefined();
           if (overrides.system_prompt != null) {
-            expect(configOverride).toBeDefined();
             expect(configOverride.agent.prompt.prompt).toBe(overrides.system_prompt);
+          } else if (user.system_prompt != null) {
+            expect(configOverride.agent.prompt.prompt).toBe(user.system_prompt);
           } else {
-            // system_prompt path should not exist
-            if (configOverride?.agent?.prompt) {
-              throw new Error('system_prompt path should not exist when not provided');
-            }
+            expect(configOverride.agent.prompt.prompt).toBe(DEFAULT_OUTBOUND_SYSTEM_PROMPT);
           }
 
           // first_message mapping
@@ -69,10 +70,12 @@ describe('Property 1: Outbound override payload construction', () => {
             }
           }
 
-          // When no overrides and no user voice_id, conversation_config_override should not exist
-          const hasAnyOverride = overrides.system_prompt != null || overrides.first_message != null || effectiveVoiceId != null;
-          if (!hasAnyOverride) {
-            expect(configOverride).toBeUndefined();
+          // conversation_config_override always exists now (prompt is always set)
+          // but check that voice/first_message don't leak in when not provided
+          const hasVoiceOrFirstMessage = overrides.first_message != null || effectiveVoiceId != null;
+          if (!hasVoiceOrFirstMessage) {
+            expect(configOverride.tts).toBeUndefined();
+            expect(configOverride.agent.first_message).toBeUndefined();
           }
         },
       ),

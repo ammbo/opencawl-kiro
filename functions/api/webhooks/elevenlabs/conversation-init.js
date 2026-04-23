@@ -56,6 +56,8 @@ const PROMO_FIRST_MESSAGE =
 const REJECTED_MESSAGE =
   'This number is not currently accepting calls from your number. Goodbye.';
 
+const DEFAULT_OUTBOUND_SYSTEM_PROMPT = `You are a helpful AI phone assistant making an outbound call on behalf of the user. Be friendly, natural, and conversational. Complete the goal described below, then politely wrap up the call.`;
+
 
 /* ── Helpers ────────────────────────────────────── */
 
@@ -304,14 +306,16 @@ export async function onRequestPost(context) {
         if (callRecord.goal) dynamicVars.message = callRecord.goal;
 
         const overrides = {};
-        if (callRecord.override_system_prompt) overrides.prompt = callRecord.override_system_prompt;
-        else if (callRecord.user_system_prompt) overrides.prompt = callRecord.user_system_prompt;
 
-        // When there's a goal AND a system prompt, inject the goal into the prompt
-        // so the agent actually knows what it's supposed to do on this call
-        if (callRecord.goal && overrides.prompt) {
-          overrides.prompt += `\n\nYour goal for this call: ${callRecord.goal}`;
-        }
+        // Always override the system prompt — never let the ElevenLabs default through.
+        // Priority: per-call override > user's saved prompt > our default
+        const basePrompt = callRecord.override_system_prompt
+          || callRecord.user_system_prompt
+          || DEFAULT_OUTBOUND_SYSTEM_PROMPT;
+
+        overrides.prompt = callRecord.goal
+          ? `${basePrompt}\n\nYour goal for this call: ${callRecord.goal}`
+          : basePrompt;
 
         if (callRecord.override_voice_id) overrides.voice_id = callRecord.override_voice_id;
         else if (callRecord.user_voice_id) overrides.voice_id = callRecord.user_voice_id;

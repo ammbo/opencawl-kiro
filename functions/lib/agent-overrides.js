@@ -6,6 +6,10 @@
 const MAX_SYSTEM_PROMPT_LENGTH = 10_000;
 const MAX_FIRST_MESSAGE_LENGTH = 2_000;
 
+const DEFAULT_OUTBOUND_SYSTEM_PROMPT = `You are a helpful AI phone assistant making an outbound call on behalf of the user. Be friendly, natural, and conversational. Complete the goal described below, then politely wrap up the call.`;
+
+export { DEFAULT_OUTBOUND_SYSTEM_PROMPT };
+
 /**
  * Validates override field lengths.
  * @param {{ system_prompt?: string, first_message?: string }} fields
@@ -65,14 +69,14 @@ export function buildElevenLabsPayload(agentId, phoneNumberId, destinationPhone,
   const configOverride = {};
   let hasOverride = false;
 
-  if (overrides.system_prompt != null) {
+  // Always override the system prompt — never let the ElevenLabs default through.
+  // Priority: per-call system_prompt override > user's stored prompt > our default
+  {
+    const basePrompt = overrides.system_prompt ?? user.system_prompt ?? DEFAULT_OUTBOUND_SYSTEM_PROMPT;
+    const prompt = (message != null && message !== '')
+      ? `${basePrompt}\n\nYour goal for this call: ${message}`
+      : basePrompt;
     if (!configOverride.agent) configOverride.agent = {};
-    // When there's both a custom system prompt and a goal/message,
-    // inject the goal into the prompt so the agent knows what to do
-    let prompt = overrides.system_prompt;
-    if (message != null && message !== '') {
-      prompt += `\n\nYour goal for this call: ${message}`;
-    }
     configOverride.agent.prompt = { prompt };
     hasOverride = true;
   }
