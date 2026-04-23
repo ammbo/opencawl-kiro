@@ -31,7 +31,7 @@ describe('Property 1: Outbound override payload construction', () => {
           // Top-level fields always present
           expect(payload.agent_id).toBe(agentId);
           expect(payload.agent_phone_number_id).toBe(fromNumber);
-          expect(payload.to_phone_number).toBe(destPhone);
+          expect(payload.to_number).toBe(destPhone);
           expect(payload.conversation_initiation_client_data).toBeDefined();
           expect(payload.conversation_initiation_client_data.dynamic_variables.user_id).toBe(user.id);
 
