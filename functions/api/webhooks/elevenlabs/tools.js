@@ -18,6 +18,7 @@
 import { verifyElevenLabsSignature } from '../../../lib/webhooks.js';
 import { isValidE164 } from '../../../lib/validation.js';
 import { buildElevenLabsPayload } from '../../../lib/agent-overrides.js';
+import { generateOutboundPrompt } from '../../../lib/outbound-prompt.js';
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -119,7 +120,9 @@ export async function onRequestPost(context) {
 
     const overrides = {};
     if (goal) {
-      overrides.system_prompt = `Your goal for this call: ${goal}`;
+      const generated = await generateOutboundPrompt(env.AI, goal);
+      overrides.system_prompt = generated.system_prompt;
+      overrides.first_message = generated.first_message;
     }
 
     const payload = buildElevenLabsPayload(agentId, fromNumber, destination_phone, user, overrides);

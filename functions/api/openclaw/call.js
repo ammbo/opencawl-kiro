@@ -16,6 +16,7 @@
 import { isValidE164, parseBody } from '../../lib/validation.js';
 import { checkEntitlement } from '../../lib/credits.js';
 import { buildElevenLabsPayload, validateOverrideFields } from '../../lib/agent-overrides.js';
+import { generateOutboundPrompt } from '../../lib/outbound-prompt.js';
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -96,9 +97,29 @@ export async function onRequestPost(context) {
     console.log(`[openclaw/call] callId=${callId} dest=${destination_phone} from=${fromNumber}`);
 
     const overrides = {};
-    if (system_prompt) overrides.system_prompt = system_prompt;
     if (voice_id) overrides.voice_id = voice_id;
-    if (first_message) overrides.first_message = first_message;
+
+    // When the user provides a goal (message) without explicit system_prompt/first_message,
+    // use an LLM to generate a conversational outbound prompt and first message.
+    // This makes the agent act as an autonomous caller, not a message relay.
+    if (system_prompt) {
+      overrides.system_prompt = system_prompt;
+    }
+    if (first_message) {
+      overrides.first_message = first_message;
+    }
+
+    if (message && !system_prompt && !first_message) {
+      const generated = await generateOutboundPrompt(context.env.AI, message);
+      overrides.system_prompt = generated.system_prompt;
+      overrides.first_message = generated.first_message;
+
+      // Persist the generated prompts so conversation-init can use them
+      await db
+        .prepare('UPDATE calls SET override_system_prompt = ?, override_first_message = ?, updated_at = ? WHERE id = ?')
+        .bind(generated.system_prompt, generated.first_message, new Date().toISOString(), callId)
+        .run();
+    }
 
     const elevenLabsPayload = buildElevenLabsPayload(agentId, fromNumber, destination_phone, user, overrides, message);
 

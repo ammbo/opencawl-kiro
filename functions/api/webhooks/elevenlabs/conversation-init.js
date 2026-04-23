@@ -62,7 +62,7 @@ const PROMO_FIRST_MESSAGE =
 const REJECTED_MESSAGE =
   'This number is not currently accepting calls from your number. Goodbye.';
 
-const DEFAULT_OUTBOUND_SYSTEM_PROMPT = `You are a Claw — an AI phone agent powered by OpenCawl. You're making an outbound call on behalf of your user. Be friendly, natural, and conversational. Complete the goal described below, then politely wrap up the call.`;
+const DEFAULT_OUTBOUND_SYSTEM_PROMPT = `You are making a phone call on someone's behalf. Be conversational, warm, and natural — like a real person calling. Do NOT mention being an AI, an agent, or relaying a message. Do NOT ask if they want to leave a message. You are calling with a specific purpose and should pursue it proactively. Once your goal is achieved, wrap up the call politely.`;
 
 
 /* ── Helpers ────────────────────────────────────── */
@@ -313,21 +313,26 @@ export async function onRequestPost(context) {
 
         const overrides = {};
 
-        // Always override the system prompt — never let the ElevenLabs default through.
-        // Priority: per-call override > user's saved prompt > our default
-        const basePrompt = callRecord.override_system_prompt
-          || callRecord.user_system_prompt
-          || DEFAULT_OUTBOUND_SYSTEM_PROMPT;
+        // If the call has a generated/explicit system prompt override, use it directly.
+        // These are already tailored for autonomous outbound behavior.
+        // Only fall back to the old goal-appending style if there's no override.
+        if (callRecord.override_system_prompt) {
+          overrides.prompt = callRecord.override_system_prompt;
+        } else {
+          const basePrompt = callRecord.user_system_prompt || DEFAULT_OUTBOUND_SYSTEM_PROMPT;
+          overrides.prompt = callRecord.goal
+            ? `${basePrompt}\n\nYour goal for this call: ${callRecord.goal}`
+            : basePrompt;
+        }
 
-        overrides.prompt = callRecord.goal
-          ? `${basePrompt}\n\nYour goal for this call: ${callRecord.goal}`
-          : basePrompt;
+        if (callRecord.override_first_message) {
+          overrides.first_message = callRecord.override_first_message;
+        } else if (callRecord.user_first_message) {
+          overrides.first_message = callRecord.user_first_message;
+        }
 
         if (callRecord.override_voice_id) overrides.voice_id = callRecord.override_voice_id;
         else if (callRecord.user_voice_id) overrides.voice_id = callRecord.user_voice_id;
-
-        if (callRecord.override_first_message) overrides.first_message = callRecord.override_first_message;
-        else if (callRecord.user_first_message) overrides.first_message = callRecord.user_first_message;
 
         return json(buildInitResponse(dynamicVars, overrides));
       }

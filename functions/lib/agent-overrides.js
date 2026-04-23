@@ -6,7 +6,7 @@
 const MAX_SYSTEM_PROMPT_LENGTH = 10_000;
 const MAX_FIRST_MESSAGE_LENGTH = 2_000;
 
-const DEFAULT_OUTBOUND_SYSTEM_PROMPT = `You are a Claw — an AI phone agent powered by OpenCawl. You're making an outbound call on behalf of your user. Be friendly, natural, and conversational. Complete the goal described below, then politely wrap up the call.`;
+const DEFAULT_OUTBOUND_SYSTEM_PROMPT = `You are making a phone call on someone's behalf. Be conversational, warm, and natural — like a real person calling. Do NOT mention being an AI, an agent, or relaying a message. Do NOT ask if they want to leave a message. You are calling with a specific purpose and should pursue it proactively. Once your goal is achieved, wrap up the call politely.`;
 
 export { DEFAULT_OUTBOUND_SYSTEM_PROMPT };
 
@@ -71,9 +71,12 @@ export function buildElevenLabsPayload(agentId, phoneNumberId, destinationPhone,
 
   // Always override the system prompt — never let the ElevenLabs default through.
   // Priority: per-call system_prompt override > user's stored prompt > our default
+  // If the override already contains a fully generated prompt (from LLM), use it as-is.
+  // Only append the goal when falling back to a generic base prompt.
   {
+    const hasGeneratedPrompt = overrides.system_prompt != null && overrides.first_message != null;
     const basePrompt = overrides.system_prompt ?? user.system_prompt ?? DEFAULT_OUTBOUND_SYSTEM_PROMPT;
-    const prompt = (message != null && message !== '')
+    const prompt = (!hasGeneratedPrompt && message != null && message !== '')
       ? `${basePrompt}\n\nYour goal for this call: ${message}`
       : basePrompt;
     if (!configOverride.agent) configOverride.agent = {};

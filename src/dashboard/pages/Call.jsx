@@ -121,7 +121,7 @@ export default function Call() {
 
           <div style={{ marginBottom: 16 }}>
             <label for="call-goal" style={{ display: 'block', fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 6 }}>
-              Goal / Message
+              Goal
             </label>
             <textarea
               id="call-goal"
@@ -129,7 +129,7 @@ export default function Call() {
               rows={3}
               value={goal}
               onInput={(e) => setGoal(e.target.value)}
-              placeholder="What should the AI say or accomplish on this call?"
+              placeholder="e.g. Wish Tom a happy birthday, Schedule a dentist appointment for next Tuesday"
             />
           </div>
 
